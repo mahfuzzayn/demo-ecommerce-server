@@ -7,6 +7,7 @@ import router from "./app/routes";
 import globalErrorHandler from "./app/middleware/globalErrorHandler";
 import notFound from "./app/middleware/notFound";
 
+
 const app: Application = express();
 
 // Middleware setup
@@ -29,7 +30,7 @@ app.get("/", (req: Request, res: Response, next: NextFunction) => {
 
     res.status(StatusCodes.OK).json({
         success: true,
-        message: "Welcome to the Next Mart",
+        message: "Welcome to the Demo eCommerce Server",
         version: "1.0.0",
         clientDetails: {
             ipAddress: clientIp,
@@ -43,8 +44,8 @@ app.get("/", (req: Request, res: Response, next: NextFunction) => {
             )} minutes`,
         },
         developerContact: {
-            email: "fahimfiroz.ph@gmail.com",
-            website: "https://programming-hero.com",
+            email: "mahfuzzayn8@gmail.com",
+            website: "https://mahfuzzayn.vercel.app",
         },
     });
 });

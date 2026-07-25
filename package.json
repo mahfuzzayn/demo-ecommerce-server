@@ -17,7 +17,7 @@
     "@types/nodemailer": "^6.4.17",
     "axios": "^1.7.9",
     "bcrypt": "^6.0.0",
-    "cloudinary": "^2.5.1",
+    "cloudinary": "^2.6.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
