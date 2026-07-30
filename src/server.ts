@@ -2,8 +2,11 @@ import { Server } from "http";
 import mongoose from "mongoose";
 import config from "./app/config";
 import app from "./app";
+import dns from 'dns';
 
 let server: Server | null = null;
+
+dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 // Database Connection
 async function connectToDatabase() {

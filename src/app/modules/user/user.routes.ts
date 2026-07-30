@@ -2,7 +2,6 @@ import { Router } from "express";
 import { UserController } from "./user.controller";
 import clientInfoParser from "../../middleware/clientInfoParser";
 import validateRequest from "../../middleware/validateRequest";
-import User from "./user.model";
 import { UserValidation } from "./user.validation";
 import { UserRole } from "./user.interface";
 import auth from "../../middleware/auth";

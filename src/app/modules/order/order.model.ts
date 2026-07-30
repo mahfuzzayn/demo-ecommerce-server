@@ -1,0 +1,132 @@
+import mongoose, { Schema } from "mongoose";
+import {
+    IOrder,
+    OrderModel,
+    OrderStatus,
+    PaymentMethod,
+    PaymentStatus,
+} from "./order.interface";
+import AppError from "../../errors/appError";
+import { StatusCodes } from "http-status-codes";
+
+const orderProductSchema = new Schema(
+    {
+        product: {
+            type: Schema.Types.ObjectId,
+            ref: "Product",
+            required: true,
+        },
+        quantity: {
+            type: Number,
+            required: true,
+            min: 1,
+        },
+        unitPrice: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+    },
+    { _id: false },
+);
+
+const orderSchema = new Schema<IOrder, OrderModel>(
+    {
+        user: {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+        },
+        products: {
+            type: [orderProductSchema],
+            required: true,
+            validate: {
+                validator: (items: unknown[]) => items.length > 0,
+                message: "At least one product is required",
+            },
+        },
+        coupon: {
+            type: String,
+            default: null,
+        },
+        totalAmount: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+        discount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        deliveryCharge: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        finalAmount: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+        status: {
+            type: String,
+            enum: Object.values(OrderStatus),
+            default: OrderStatus.PENDING,
+        },
+        shippingAddress: {
+            type: String,
+            required: true,
+        },
+        paymentMethod: {
+            type: String,
+            enum: Object.values(PaymentMethod),
+            required: true,
+        },
+        paymentStatus: {
+            type: String,
+            enum: Object.values(PaymentStatus),
+            default: PaymentStatus.PENDING,
+        },
+        sslSessionKey: {
+            type: String,
+            default: null,
+        },
+        sslTransactionId: {
+            type: String,
+            default: null,
+        },
+        stripeSessionId: {
+            type: String,
+            default: null,
+        },
+        paymentIntentId: {
+            type: String,
+            default: null,
+        },
+    },
+    {
+        timestamps: true,
+        toJSON: {
+            transform: (_doc, ret) => {
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { __v, ...rest } = ret;
+                return rest;
+            },
+        },
+    },
+);
+
+orderSchema.statics.checkOrderExist = async function (orderId: string) {
+    const existingOrder = await this.findById(orderId);
+
+    if (!existingOrder) {
+        throw new AppError(StatusCodes.NOT_FOUND, "Order does not exist!");
+    }
+
+    return existingOrder;
+};
+
+const Order = mongoose.model<IOrder, OrderModel>("Order", orderSchema);
+
+export default Order;

@@ -33,6 +33,7 @@ declare module 'sslcommerz-lts' {
     class SSLCommerzPayment {
         constructor(storeId: string, storePassword: string, isLive: boolean);
         init(data: SSLCommerzInitData): Promise<any>;
+        validate(data: { val_id: string }): Promise<any>;
     }
 
     export = SSLCommerzPayment;
