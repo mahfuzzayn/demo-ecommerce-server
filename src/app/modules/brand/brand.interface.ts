@@ -4,6 +4,7 @@ export interface IBrand extends Document {
     name: string;
     logo: string;
     isActive: boolean;
+    isDeleted: boolean;
     createdBy: Types.ObjectId;
     createdAt: Date;
     updatedAt: Date;

@@ -9,7 +9,7 @@ import { IImageFile } from "../../interface/IImageFile";
 
 const getAllCategories = async (query: Record<string, unknown>) => {
     const categoryQuery = new QueryBuilder(
-        Category.find({ isActive: true }).populate("parent", "name slug"),
+        Category.find().populate("parent", "name slug"),
         query,
     )
         .search(CategorySearchableFields)

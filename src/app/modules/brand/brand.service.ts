@@ -8,7 +8,7 @@ import { IJwtPayload } from "../auth/auth.interface";
 import { IImageFile } from "../../interface/IImageFile";
 
 const getAllBrands = async (query: Record<string, unknown>) => {
-    const brandQuery = new QueryBuilder(Brand.find({ isActive: true }), query)
+    const brandQuery = new QueryBuilder(Brand.find({ isDeleted: false }), query)
         .search(BrandSearchableFields)
         .filter()
         .sort()
@@ -69,7 +69,7 @@ const updateBrand = async (
 const deleteBrand = async (brandId: string) => {
     const brand = await Brand.checkBrandExist(brandId);
 
-    brand.isActive = false;
+    brand.isDeleted = true;
     await brand.save();
 
     return brand;

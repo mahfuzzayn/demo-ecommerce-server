@@ -1,7 +1,7 @@
 # Taste
 - Prefers using the Codebase Memory MCP tools (index_repository, get_architecture, search_graph) for repository exploration and summarization tasks, explicitly requesting them by name. Confidence: 0.7
-- Expects new features/modules to strictly follow the project's documented specs and existing code conventions — repeatedly instructs "follow the rules strictly" when kicking off a new module from a spec doc. Confidence: 0.9
-- Maintains feature/API specs as markdown docs in the repo (e.g., src/docs/api-routes.md) and expects them to be read (and re-read on request) before implementation begins. Confidence: 0.7
+- Expects new features/modules to strictly follow the project's documented specs and existing code conventions — repeatedly instructs "follow the rules strictly" when kicking off a new module from a spec doc. Confidence: 0.95
+- Maintains feature/API specs as markdown docs in the repo (e.g., src/docs/api-routes.md, src/docs/v7.md) and expects them to be read (and re-read on request) before implementation begins. Confidence: 0.8
 - Expects every module in the project to have a comprehensive readme.md file (overview, how-it-works, and test data with request/response examples), including retroactively adding them to existing older modules that lack documentation. Confidence: 0.8
 - Does not want the assistant to run build/compile verification commands automatically after code changes — said "I will build when needed." Confidence: 0.8
 - Communicates tersely and directively; expects immediate execution ("start working on X now") without lengthy back-and-forth or planning discussion. Confidence: 0.6

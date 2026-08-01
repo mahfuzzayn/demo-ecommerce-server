@@ -1,0 +1,1800 @@
+# Demo eCommerce Server — Backend Usage Guide for Frontend
+
+This guide explains how to connect a frontend application to the Demo eCommerce backend and use every API without issues. Follow the conventions here (authentication, request/response formats, query parameters, file uploads, and payment flows) exactly as described.
+
+---
+
+## 1. Table of Contents
+
+- [2. Getting Started](#2-getting-started)
+- [3. Authentication & Authorization](#3-authentication--authorization)
+- [4. Common Conventions](#4-common-conventions)
+- [5. Auth Module](#5-auth-module)
+- [6. User Module](#6-user-module)
+- [7. Product Module](#7-product-module)
+- [8. Order Module](#8-order-module)
+- [9. Payment Module](#9-payment-module)
+- [10. Meta Module](#10-meta-module)
+- [11. Brand Module](#11-brand-module)
+- [12. Coupon Module](#12-coupon-module)
+- [13. Category Module](#13-category-module)
+- [14. Review Module](#14-review-module)
+- [15. Payment Flow Walkthroughs](#15-payment-flow-walkthroughs)
+- [16. Frontend Integration Notes](#16-frontend-integration-notes)
+
+---
+
+## 2. Getting Started
+
+### Base URL
+
+```
+/api/v1
+```
+
+All routes below are relative to the base URL. Example full URL:
+
+```
+http://localhost:3001/api/v1/product
+```
+
+### Server Configuration
+
+| Item | Value |
+|---|---|
+| Base path | `/api/v1` |
+| Default dev port | `3001` |
+| Root endpoint | `GET /` (returns server info + health check) |
+| CORS origin | `http://localhost:3000` (configured in `app.ts`) |
+
+### Root / Health Check Endpoint
+
+```
+GET /
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Welcome to the Demo eCommerce Server",
+  "version": "1.0.0",
+  "clientDetails": {
+    "ipAddress": "::1",
+    "accessedAt": "2026-07-31T12:00:00.000Z"
+  },
+  "serverDetails": {
+    "hostname": "my-host",
+    "platform": "win32",
+    "uptime": "2 hours 10 minutes"
+  },
+  "developerContact": {
+    "email": "mahfuzzayn8@gmail.com",
+    "website": "https://mahfuzzayn.vercel.app"
+  }
+}
+```
+
+### Content Types
+
+- **Most endpoints**: `Content-Type: application/json`
+- **File upload endpoints** (user profile, product, brand logo, category icon): `Content-Type: multipart/form-data`
+
+---
+
+## 3. Authentication & Authorization
+
+The API uses **JWT tokens**. Two token types exist:
+
+| Token | Lifetime | How it is delivered | Where it is used |
+|---|---|---|---|
+| **Access Token** | `JWT_ACCESS_EXPIRES_IN` (default `7d`) | Returned in response body | Sent as `Authorization: Bearer <accessToken>` on protected routes |
+| **Refresh Token** | `JWT_REFRESH_EXPIRES_IN` (default `1y`) | Set as an **httpOnly cookie** named `refreshToken` | Sent automatically by the browser to `/auth/refresh-token` |
+
+### How to authenticate a request
+
+Add the access token to the `Authorization` header:
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+**Important:** The auth middleware reads `req.headers.authorization` directly — it does **not** accept `Authorization: Bearer` with a missing token, and there is no `x-access-token` alternative. Always send the header exactly as `Bearer <token>`.
+
+### Roles
+
+| Role | Value |
+|---|---|
+| Admin | `admin` |
+| Manager | `manager` |
+| Customer | `customer` |
+
+Role restrictions per endpoint are listed in each module below. `manager` is defined in the system but **not** currently used by any route guard; the active guards are `admin` and `customer`.
+
+### Refresh token cookie details
+
+Set by the server on `POST /auth/login` and `POST /user/register`:
+
+| Attribute | Value |
+|---|---|
+| Name | `refreshToken` |
+| httpOnly | `true` |
+| secure | `true` in production, `false` in development |
+| sameSite | `none` |
+| maxAge | 1 year |
+
+Because `sameSite: "none"` + `secure` is used in production, the frontend must be served over **HTTPS** in production for the cookie to be sent.
+
+### Keeping the session alive
+
+1. Call `POST /api/v1/auth/login` (or register). The server sets the `refreshToken` cookie and returns an `accessToken`.
+2. When the access token expires (HTTP 401, "Token has expired!"), call `POST /api/v1/auth/refresh-token`. The cookie is sent automatically; the response contains a new `accessToken`.
+3. Store the access token in memory (or `localStorage`/`sessionStorage` — your choice) and attach it to every protected request.
+
+---
+
+## 4. Common Conventions
+
+### Success response format
+
+Every successful response uses this shape:
+
+```json
+{
+  "success": true,
+  "message": "Human readable message",
+  "meta": { "page": 1, "limit": 10, "total": 25, "totalPage": 3 },
+  "data": { }
+}
+```
+
+- `meta` is **only present on paginated list endpoints** (products, users, orders, brands, coupons, categories, reviews).
+- `data` can be an object, an array, or `null` depending on the endpoint.
+
+### Error response format
+
+All errors (validation, auth, not-found, server errors) use this shape:
+
+```json
+{
+  "success": false,
+  "message": "Short human readable error",
+  "errorSources": [
+    { "path": "price", "message": "Price must be a positive number" }
+  ],
+  "err": {},
+  "stack": null
+}
+```
+
+- `errorSources` gives field-level details (Zod validation, Mongo validation, duplicate key, cast errors).
+- `stack` is only populated in development.
+
+### Common HTTP status codes
+
+| Code | Meaning |
+|---|---|
+| 200 | OK |
+| 201 | Created |
+| 400 | Bad request (validation, business rule violation) |
+| 401 | Unauthorized / invalid or expired token |
+| 403 | Forbidden (wrong role, inactive user, bad credentials) |
+| 404 | Not found |
+| 406 | Not acceptable (e.g., email already registered) |
+| 409 | Conflict (duplicate name/slug/code, duplicate review) |
+| 500 | Internal server error |
+
+### Query parameters (lists)
+
+All list endpoints support the same QueryBuilder parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `searchTerm` | string | Case-insensitive regex search over module-specific searchable fields |
+| `page` | number | Page number (default `1`) |
+| `limit` | number | Items per page (default `10`) |
+| `sort` | string | Comma-separated field list, e.g. `price,-createdAt` (default `-createdAt`) |
+| `fields` | string | Comma-separated projection, e.g. `name,price` |
+| *(module filters)* | varies | Module-specific filter fields, listed per module below |
+
+**Example:**
+```
+GET /api/v1/product?searchTerm=phone&minPrice=100&maxPrice=1000&page=2&limit=20&sort=-price
+```
+
+### Date & ID formats
+
+- **IDs**: MongoDB ObjectId strings (24 hex chars), e.g. `664f1a2b3c4d5e6f7a8b9c0d`.
+- **Dates**: ISO 8601 strings, e.g. `2026-07-31T12:00:00.000Z`. When sending dates (coupon start/end), send `YYYY-MM-DD` or full ISO strings.
+
+---
+
+## 5. Auth Module
+
+Parent route: `/api/v1/auth`
+
+### 5.1 POST /api/v1/auth/login — Login
+
+Public. Client info (device, browser, IP) is captured automatically from the request headers by the server — **do not send `clientInfo` in the body**.
+
+**Request:**
+```json
+{
+  "email": "customer@example.com",
+  "password": "123456"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "User logged in successfully!",
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
+  }
+}
+```
+
+The server also sets the `refreshToken` httpOnly cookie. The `refreshToken` value in the body is a convenience — you do not need to store it manually, but you can.
+
+**Errors:** 404 "This user is not found!" / 403 "This user is not active!" / 403 "Password does not match"
+
+### 5.2 POST /api/v1/auth/refresh-token — Refresh access token
+
+Public. Reads the `refreshToken` cookie automatically.
+
+**Request:**
+```
+POST /api/v1/auth/refresh-token
+Cookie: refreshToken=eyJhbGciOiJIUzI1NiIs...
+```
+No body needed.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "User logged in successfully!",
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIs..."
+  }
+}
+```
+
+**Errors:** 403 "Invalid Refresh Token" / 404 "User does not exist" / 400 "User is not active"
+
+### 5.3 POST /api/v1/auth/change-password — Change password
+
+Protected — `admin`, `customer`.
+
+**Request:**
+```
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "oldPassword": "123456",
+  "newPassword": "newpassword123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Password changed successfully!",
+  "data": null
+}
+```
+
+### 5.4 POST /api/v1/auth/forgot-password — Request password reset OTP
+
+Public. Sends a **6-digit OTP** to the user's email. OTP is valid for **5 minutes**.
+
+**Request:**
+```json
+{
+  "email": "customer@example.com"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Check your email to reset your password",
+  "data": null
+}
+```
+
+### 5.5 POST /api/v1/auth/verify-otp — Verify OTP
+
+Public. Verifies the OTP received by email and returns a **resetToken** for the next step.
+
+**Request:**
+```json
+{
+  "email": "customer@example.com",
+  "otp": "483291"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "OTP verified successfully.",
+  "data": {
+    "resetToken": "eyJhbGciOiJIUzI1NiIs..."
+  }
+}
+```
+
+**Errors:** 403 "OTP has expired or is invalid" / 403 "Invalid OTP" / 400 "No OTP token found. Please request a new password reset OTP."
+
+### 5.6 POST /api/v1/auth/reset-password — Reset password
+
+Public. Uses the `resetToken` from step 5.5.
+
+**Request:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "newPassword": "newpassword123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Password reset successfully!",
+  "data": {
+    "message": "Password changed successfully"
+  }
+}
+```
+
+### Frontend password reset flow
+
+```
+1. POST /auth/forgot-password   { email }                    → OTP emailed
+2. POST /auth/verify-otp        { email, otp }               → resetToken
+3. POST /auth/reset-password    { token: resetToken, newPassword } → done
+```
+
+---
+
+## 6. User Module
+
+Parent route: `/api/v1/user`
+
+### 6.1 POST /api/v1/user/register — Register customer
+
+Public. Auto-logs-in: returns an access token and sets the `refreshToken` cookie. Only `customer` role is allowed (`admin` registration is rejected).
+
+**Request:**
+```json
+{
+  "name": "John Doe",
+  "email": "customer@example.com",
+  "password": "123456",
+  "role": "customer"
+}
+```
+
+> **Note:** `clientInfo` is **auto-captured** by the server from headers — do not send it. `role` is optional (defaults to `customer`).
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "User registration completed successfully!",
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIs..."
+  }
+}
+```
+
+**Errors:** 406 "Invalid role. Only User is allowed." / 406 "Email is already registered"
+
+### 6.2 GET /api/v1/user — Get all users (admin dashboard)
+
+Protected — `admin`.
+
+**Query params:** `searchTerm` (searches `email`, `name`, `role`), `page`, `limit`, `sort`, `fields`, plus filters: `role`, `isActive`.
+
+**Request:**
+```
+GET /api/v1/user?searchTerm=john&page=1&limit=10
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Users are retrieved successfully",
+  "meta": { "page": 1, "limit": 10, "total": 1, "totalPage": 1 },
+  "data": [
+    {
+      "_id": "664f1a2b3c4d5e6f7a8b9c0d",
+      "name": "John Doe",
+      "email": "customer@example.com",
+      "role": "customer",
+      "photoUrl": null,
+      "clientInfo": {
+        "device": "pc",
+        "browser": "Chrome",
+        "ipAddress": "::1",
+        "os": "Windows",
+        "userAgent": "Mozilla/5.0..."
+      },
+      "lastLogin": "2026-07-31T10:00:00.000Z",
+      "isActive": true,
+      "createdAt": "2026-07-01T10:00:00.000Z",
+      "updatedAt": "2026-07-31T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+> **Note:** `password` is never returned (stripped by the model).
+
+### 6.3 GET /api/v1/user/me — My profile
+
+Protected — `admin`, `customer`.
+
+**Request:**
+```
+GET /api/v1/user/me
+Authorization: Bearer <accessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Profile retrieved successfully",
+  "data": {
+    "_id": "664f1a2b3c4d5e6f7a8b9c0d",
+    "name": "John Doe",
+    "email": "customer@example.com",
+    "role": "customer",
+    "photoUrl": null,
+    "clientInfo": { "device": "pc", "browser": "Chrome", "ipAddress": "::1", "os": "Windows" },
+    "lastLogin": "2026-07-31T10:00:00.000Z",
+    "isActive": true,
+    "createdAt": "2026-07-01T10:00:00.000Z",
+    "updatedAt": "2026-07-31T10:00:00.000Z"
+  }
+}
+```
+
+### 6.4 PATCH /api/v1/user/update-profile — Update profile
+
+Protected — `admin`, `manager`, `customer`. **Multipart form-data** — the JSON payload goes inside a `data` field and the photo is a `profilePhoto` file.
+
+**Request:**
+```
+PATCH /api/v1/user/update-profile
+Authorization: Bearer <accessToken>
+Content-Type: multipart/form-data
+
+Form fields:
+  data: {"name":"John Updated","phoneNo":"01712345678","gender":"Male","dateOfBirth":"1990-01-01","address":"123 Main Street, Dhaka"}
+  profilePhoto: <image file>
+```
+
+Allowed `data` fields (all optional, unknown keys are rejected — `zod .strict()`):
+
+| Field | Type | Rules |
+|---|---|---|
+| `phoneNo` | string | exactly 11 digits |
+| `gender` | string | `Male`, `Female`, or `Other` |
+| `dateOfBirth` | string | valid date |
+| `address` | string | any text |
+| `photo` | string | must be a valid `http(s)://...png|jpg|jpeg` URL |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Profile updated successfully",
+  "data": {
+    "_id": "664f1a2b3c4d5e6f7a8b9c0d",
+    "name": "John Doe",
+    "email": "customer@example.com",
+    "role": "customer",
+    "photoUrl": "https://res.cloudinary.com/.../profile.jpg",
+    "isActive": true,
+    "lastLogin": "2026-07-31T10:00:00.000Z",
+    "createdAt": "2026-07-01T10:00:00.000Z",
+    "updatedAt": "2026-07-31T10:00:00.000Z"
+  }
+}
+```
+
+### 6.5 PATCH /api/v1/user/:id/status — Toggle user active status
+
+Protected — `admin`. Toggles `isActive`.
+
+**Request:**
+```
+PATCH /api/v1/user/664f1a2b3c4d5e6f7a8b9c0d/status
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "User is now inactive",
+  "data": {
+    "_id": "664f1a2b3c4d5e6f7a8b9c0d",
+    "name": "John Doe",
+    "isActive": false
+  }
+}
+```
+
+---
+
+## 7. Product Module
+
+Parent route: `/api/v1/product`
+
+Product model fields: `name`, `slug` (auto-generated), `description`, `price`, `stock`, `weight`, `category` (ObjectId → Category), `imageUrls[]`, `isActive`, `brand` (ObjectId → Brand), `averageRating`, `ratingCount`, `availableColors[]`, `specification[]` (`{key, value}`), `keyFeatures[]`, timestamps.
+
+### 7.1 GET /api/v1/product — Get all products
+
+Public. Returns **active only** (`isActive: true`). Category (`name`, `slug`) and brand (`name`, `logo`) are populated.
+
+**Query params:** `searchTerm` (searches `name`, `description`), `page`, `limit`, `sort`, `fields`, plus filters:
+- `category` — category ObjectId
+- `brand` — brand ObjectId
+- `minPrice`, `maxPrice` — numeric price range
+- `isActive` — boolean
+- `availableColors` — color string
+
+**Request:**
+```
+GET /api/v1/product?searchTerm=phone&minPrice=100&maxPrice=1000&page=1&limit=10
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Products retrieved successfully",
+  "meta": { "page": 1, "limit": 10, "total": 5, "totalPage": 1 },
+  "data": [
+    {
+      "_id": "664f1a2b3c4d5e6f7a8b9c0d",
+      "name": "Smartphone X",
+      "slug": "smartphone-x",
+      "description": "Latest smartphone with advanced features",
+      "price": 799.99,
+      "stock": 50,
+      "weight": 0.2,
+      "category": { "_id": "665a...", "name": "Electronics", "slug": "electronics" },
+      "brand": { "_id": "665b...", "name": "TechBrand", "logo": "https://..." },
+      "imageUrls": ["https://res.cloudinary.com/.../image1.jpg"],
+      "isActive": true,
+      "averageRating": 4.5,
+      "ratingCount": 12,
+      "availableColors": ["Black", "White"],
+      "specification": [
+        { "key": "RAM", "value": "8GB" },
+        { "key": "Storage", "value": "128GB" }
+      ],
+      "keyFeatures": ["5G Support", "Wireless Charging"],
+      "createdAt": "2026-07-01T10:00:00.000Z",
+      "updatedAt": "2026-07-10T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+### 7.2 GET /api/v1/product/:productId — Get single product
+
+Public.
+
+**Request:**
+```
+GET /api/v1/product/664f1a2b3c4d5e6f7a8b9c0d
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Product retrieved successfully",
+  "data": { "...": "same structure as list item" }
+}
+```
+
+**Errors:** 404 "Product not found!" / 400 "Product is not available!"
+
+### 7.3 POST /api/v1/product — Create product
+
+Protected — `admin`. **Multipart form-data.** The JSON payload goes in a `data` field; up to **10 images** upload via the `images` field. The slug is auto-generated from `name`.
+
+**Request:**
+```
+POST /api/v1/product
+Authorization: Bearer <adminAccessToken>
+Content-Type: multipart/form-data
+
+Form fields:
+  data: {"name":"Smartphone X","description":"Latest smartphone","price":799.99,"stock":50,"weight":0.2,"category":"<categoryId>","brand":"<brandId>","availableColors":["Black","White"],"specification":[{"key":"RAM","value":"8GB"}],"keyFeatures":["5G Support"]}
+  images: <file1> <file2> ... (max 10)
+```
+
+Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `brand`. Optional: `stock` (default 0), `imageUrls`, `isActive` (default true), `availableColors`, `specification`, `keyFeatures`.
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "Product created successfully",
+  "data": { "...": "product object with populated category/brand and uploaded imageUrls" }
+}
+```
+
+**Errors:** 409 "A product with a similar name already exists!" (non-unique slug), 404 for invalid category/brand, 400 for invalid data.
+
+### 7.4 PATCH /api/v1/product/:productId — Update product
+
+Protected — `admin`. **Multipart form-data** with `data` + `images` fields, same as create. Any subset of fields can be sent. If new `images` are uploaded they **replace** the existing `imageUrls`.
+
+**Request:**
+```
+PATCH /api/v1/product/664f1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <adminAccessToken>
+Content-Type: multipart/form-data
+
+Form fields:
+  data: {"name":"Smartphone X Pro","price":899.99}
+  images: <file1> (optional, replaces imageUrls)
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Product updated successfully",
+  "data": { "...": "updated product" }
+}
+```
+
+### 7.5 DELETE /api/v1/product/:productId — Delete product
+
+Protected — `admin`. **Soft delete** — sets `isActive: false`.
+
+**Request:**
+```
+DELETE /api/v1/product/664f1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Product deleted successfully",
+  "data": {
+    "_id": "664f1a2b3c4d5e6f7a8b9c0d",
+    "isActive": false,
+    "...": "rest of product fields"
+  }
+}
+```
+
+---
+
+## 8. Order Module
+
+Parent route: `/api/v1/order`
+
+Order model fields: `user` (ObjectId → User, attached automatically from token), `products[]` (`{product, quantity, unitPrice}`), `coupon`, `totalAmount`, `discount`, `deliveryCharge`, `finalAmount`, `status`, `shippingAddress`, `paymentMethod` (`COD` | `Online`), `paymentStatus` (`Pending` | `Paid` | `Failed`), payment gateway tracking fields, timestamps.
+
+### Order status lifecycle
+
+`Pending` → `Processing` → `Shipped` → `Completed`, or `Cancelled` from any non-final state. Once `Completed` or `Cancelled`, status is **locked**.
+
+### 8.1 GET /api/v1/order — Get all orders
+
+Protected — `admin`. Populates `user` and `products.product`.
+
+**Query params:** `searchTerm` (searches `status`, `paymentMethod`, `paymentStatus`), `page`, `limit`, `sort`, `fields`, plus filters: `status`, `paymentMethod`, `paymentStatus`, `userId`.
+
+**Request:**
+```
+GET /api/v1/order?status=Pending&page=1&limit=10
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Orders retrieved successfully",
+  "meta": { "page": 1, "limit": 10, "total": 3, "totalPage": 1 },
+  "data": [
+    {
+      "_id": "666a1a2b3c4d5e6f7a8b9c0d",
+      "user": { "_id": "664f...", "name": "John Doe", "email": "customer@example.com" },
+      "products": [
+        {
+          "product": { "_id": "664f1a2b...", "name": "Smartphone X", "price": 799.99 },
+          "quantity": 2,
+          "unitPrice": 799.99
+        }
+      ],
+      "coupon": null,
+      "totalAmount": 1599.98,
+      "discount": 0,
+      "deliveryCharge": 50,
+      "finalAmount": 1649.98,
+      "status": "Pending",
+      "shippingAddress": "123 Main Street, Dhaka",
+      "paymentMethod": "COD",
+      "paymentStatus": "Pending",
+      "createdAt": "2026-07-15T10:00:00.000Z",
+      "updatedAt": "2026-07-15T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+### 8.2 GET /api/v1/order/:orderId — Get order details
+
+Protected — `admin`, `customer`. (Note: ownership is not enforced in the service — any authenticated admin or customer who knows the order ID can fetch it.)
+
+**Request:**
+```
+GET /api/v1/order/666a1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <accessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Order details retrieved successfully",
+  "data": { "...": "same structure as list item" }
+}
+```
+
+### 8.3 POST /api/v1/order — Create order
+
+Protected — `admin`, `customer`. The authenticated user is attached as the order owner automatically. Each product is validated (exists, active, sufficient stock); stock is **decremented** on order creation.
+
+**Request:**
+```
+POST /api/v1/order
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "products": [
+    { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 2, "unitPrice": 799.99 }
+  ],
+  "coupon": "SAVE20",
+  "totalAmount": 1599.98,
+  "discount": 0,
+  "deliveryCharge": 50,
+  "finalAmount": 1649.98,
+  "shippingAddress": "123 Main Street, Dhaka",
+  "paymentMethod": "COD"
+}
+```
+
+- `products` — required, at least 1 item; `unitPrice` is the price snapshot at order time.
+- `coupon` — optional string.
+- `paymentMethod` — `"COD"` or `"Online"`.
+- `totalAmount`, `finalAmount` — required numbers. `discount`/`deliveryCharge` default to `0`.
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "Order created successfully",
+  "data": {
+    "_id": "666a1a2b3c4d5e6f7a8b9c0d",
+    "user": { "_id": "664f...", "name": "John Doe", "email": "customer@example.com" },
+    "products": [{ "product": { "_id": "664f1a2b...", "name": "Smartphone X" }, "quantity": 2, "unitPrice": 799.99 }],
+    "coupon": "SAVE20",
+    "totalAmount": 1599.98,
+    "discount": 0,
+    "deliveryCharge": 50,
+    "finalAmount": 1649.98,
+    "status": "Pending",
+    "shippingAddress": "123 Main Street, Dhaka",
+    "paymentMethod": "COD",
+    "paymentStatus": "Pending",
+    "createdAt": "2026-07-15T10:00:00.000Z",
+    "updatedAt": "2026-07-15T10:00:00.000Z"
+  }
+}
+```
+
+**Errors:** 404 "Product with ID X not found!" / 400 "Product is not available!" / 400 "Insufficient stock for ... Available: N"
+
+### 8.4 PATCH /api/v1/order/:orderId/status — Change order status
+
+Protected — `admin`.
+
+**Request:**
+```
+PATCH /api/v1/order/666a1a2b3c4d5e6f7a8b9c0d/status
+Authorization: Bearer <adminAccessToken>
+Content-Type: application/json
+
+{
+  "status": "Processing"
+}
+```
+
+`status` must be one of: `Pending`, `Processing`, `Shipped`, `Completed`, `Cancelled`.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Order status updated to Processing",
+  "data": { "_id": "666a...", "status": "Processing", "...": "rest of order fields" }
+}
+```
+
+**Errors:** 400 "Cannot change status of a completed/cancelled order!" (final states are locked)
+
+---
+
+## 9. Payment Module
+
+Parent route: `/api/v1/payment`
+
+Three providers: **Stripe** (international), **SSLCommerz** (Bangladesh), **bKash** (Bangladesh). Each provider has an **initiate** endpoint (returns a payment URL / session for the frontend to send the user to) and a **validate** endpoint (confirms the result and updates the order).
+
+### How the flow works (high level)
+
+```
+1. Frontend creates an order           → POST /api/v1/order
+2. Frontend calls provider init        → POST /api/v1/payment/:orderId/<provider>/init
+   → Server returns gatewayUrl / sessionId
+3. Frontend redirects user to gatewayUrl
+4. User pays on the gateway
+5. Provider redirects user back (Stripe: to server, then to frontend;
+   SSLCommerz: to server which redirects to frontend; bKash: to server callback URL)
+6. On success, the server marks the order:
+   paymentStatus = "Paid", status = "Processing"
+```
+
+### 9.1 POST /api/v1/payment/:orderId/stripe/init — Initiate Stripe
+
+Protected — `admin`, `customer`. Uses Stripe **Checkout Sessions** (hosted page).
+
+**Request:**
+```
+POST /api/v1/payment/666a1a2b3c4d5e6f7a8b9c0d/stripe/init
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "amount": 1500,
+  "currency": "usd"
+}
+```
+
+- `amount` — required, number. If omitted value invalid, order's `finalAmount` is used as fallback in the service.
+- `currency` — optional, default `usd`.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Stripe payment initiated successfully",
+  "data": {
+    "success": true,
+    "gatewayUrl": "https://checkout.stripe.com/c/pay/...",
+    "sessionId": "cs_test_abc123...",
+    "message": "Stripe payment initiated successfully"
+  }
+}
+```
+
+**Frontend action:** redirect the browser to `data.gatewayUrl`. Keep `data.sessionId` — it is used for validation.
+
+### 9.2 POST /api/v1/payment/stripe/validate — Validate Stripe
+
+> **Note:** The `POST /stripe/validate` route is **not currently registered** in the server (`payment.routes.ts` defines only `/stripe/success` and `/stripe/cancel` callbacks, plus the `init` route). Validation happens automatically via the **Stripe Checkout redirect**. Use the flow below instead of calling `/stripe/validate` directly.
+
+**How validation actually works (hosted Checkout flow):**
+
+1. `POST /:orderId/stripe/init` returns `gatewayUrl` (a `checkout.stripe.com` link) and `sessionId`.
+2. Redirect the browser to `gatewayUrl`.
+3. Stripe redirects the browser to `GET /api/v1/payment/stripe/success?session_id=<id>&orderId=<orderId>` on success, or `GET /api/v1/payment/stripe/cancel?orderId=<orderId>` on cancel.
+4. The server validates the session and updates the order (`paymentStatus: "Paid"`, `status: "Processing"`), then redirects the browser to:
+   - `FRONTEND_URL/payment/success?tran_id=<sessionId>` on success
+   - `FRONTEND_URL/payment/failed` on failure/cancel
+
+**Manual validation (optional, if you have a `sessionId` from a prior init):** the underlying utility exists, but there is no public route exposed for it. The redirect callbacks above are the supported path.
+
+`data.status` is `"success"` | `"failed"` | `"pending"` | `"cancelled"`. On success the server sets the order to `Paid` / `Processing`.
+
+**Redirect callbacks (do not call manually):**
+- `GET/POST /api/v1/payment/stripe/success?session_id=<id>&orderId=<orderId>` — Stripe redirects here after payment; the server validates, then redirects the browser to `FRONTEND_URL/payment/success?tran_id=<transactionId>`.
+- `GET/POST /api/v1/payment/stripe/cancel?orderId=<orderId>` — Stripe redirects here if cancelled; the server redirects the browser to `FRONTEND_URL/payment/failed`.
+
+### 9.3 POST /api/v1/payment/:orderId/sslcommerz/init — Initiate SSLCommerz
+
+Protected — `admin`, `customer`. Requires full customer + shipping details. The server auto-generates `tran_id`, `success_url`, `fail_url`, `cancel_url`, `ipn_url`; you do not send them.
+
+**Request:**
+```
+POST /api/v1/payment/666a1a2b3c4d5e6f7a8b9c0d/sslcommerz/init
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "total_amount": 1500,
+  "product_name": "E-commerce Order",
+  "product_category": "General",
+  "cus_name": "John Doe",
+  "cus_email": "customer@example.com",
+  "cus_phone": "01712345678",
+  "cus_add1": "123 Main Street",
+  "cus_city": "Dhaka",
+  "cus_state": "Dhaka",
+  "cus_postcode": "1200",
+  "cus_country": "Bangladesh",
+  "ship_name": "John Doe",
+  "ship_add1": "123 Main Street",
+  "ship_city": "Dhaka",
+  "ship_state": "Dhaka",
+  "ship_postcode": "1200",
+  "ship_country": "Bangladesh"
+}
+```
+
+Required fields (per validation): `total_amount`, `product_name`, `cus_name`, `cus_email`, `cus_phone`, `cus_add1`, `cus_city`, `cus_state`, `cus_postcode`, `cus_country`, `ship_name`, `ship_add1`, `ship_city`, `ship_state`, `ship_postcode`, `ship_country`. Optional: `product_category` (default "General"), `currency` (default "BDT").
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "SSLCommerz payment initiated successfully",
+  "data": {
+    "success": true,
+    "gatewayUrl": "https://sandbox.sslcommerz.com/gwprocess/v4/...",
+    "sessionId": "session_key_xyz",
+    "message": "SSLCommerz payment initiated successfully"
+  }
+}
+```
+
+**Frontend action:** redirect the browser to `data.gatewayUrl`.
+
+### 9.4 POST /api/v1/payment/sslcommerz/validate — Validate SSLCommerz
+
+> **Note:** This route is registered as `router.all("/sslcommerz/validate", ...)` and **always responds with a browser redirect** (never JSON), whether called by SSLCommerz's server or by your frontend. Use it as the callback target for SSLCommerz's `success_url`/`ipn_url`; do **not** rely on it for a JSON response.
+
+**How validation actually works:**
+
+1. SSLCommerz calls the server's `success_url`/`fail_url`/`cancel_url`/`ipn_url` (all configured server-side to hit this handler) with `val_id` and `tran_id`.
+2. The server validates the transaction with SSLCommerz and updates the order (`paymentStatus: "Paid"`, `status: "Processing"`).
+3. The browser is redirected to:
+   - `FRONTEND_URL/payment/success?tran_id=<tran_id>` on success
+   - `FRONTEND_URL/payment/failed?tran_id=<tran_id>` on failure
+
+If you call this endpoint from your own frontend code, you will receive a **302 redirect** to one of those two frontend URLs — handle it as a redirect, not a JSON response.
+
+**Redirect callbacks (do not call manually):**
+- `GET/POST /api/v1/payment/sslcommerz/validate?val_id=...&tran_id=...` — SSLCommerz hits the server's success/fail/ipn URLs, all mapped to this handler. On success the browser is redirected to `FRONTEND_URL/payment/success?tran_id=<tran_id>`; otherwise `FRONTEND_URL/payment/failed?tran_id=<tran_id>`.
+
+> **Frontend requirement:** implement frontend routes at `FRONTEND_URL/payment/success` and `FRONTEND_URL/payment/failed` — the backend redirects browsers there after gateway callbacks.
+
+### 9.5 POST /api/v1/payment/:orderId/bkash/init — Initiate bKash
+
+Protected — `admin`, `customer`.
+
+**Request:**
+```
+POST /api/v1/payment/666a1a2b3c4d5e6f7a8b9c0d/bkash/init
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "amount": 1500,
+  "customerNumber": "01712345678"
+}
+```
+
+Required: `amount`, `customerNumber`.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "bKash payment initiated successfully",
+  "data": {
+    "success": true,
+    "gatewayUrl": "https://sandbox.bka.sh/...",
+    "message": "bKash payment initiated successfully"
+  }
+}
+```
+
+**Frontend action:** redirect the browser to `data.gatewayUrl` (the bKash payment page). The bKash callback (configured via `BKASH_CALLBACK_URL`) returns the user to the server; the `paymentID` from bKash must then be sent to the validate endpoint.
+
+### 9.6 POST /api/v1/payment/bkash/validate — Validate bKash
+
+Protected — `admin`, `customer`. Returns **JSON** (unlike the SSLCommerz validate). Uses the `paymentID` from the bKash gateway.
+
+**Request:**
+```
+POST /api/v1/payment/bkash/validate
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "paymentID": "bkash_payment_id_from_callback"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Payment validated successfully",
+  "data": {
+    "success": true,
+    "transactionId": "TRX123456",
+    "status": "success",
+    "message": "bKash payment validated successfully"
+  }
+}
+```
+
+> **Note:** on success the service marks the most recently created order (`paymentStatus: "Paid"`, `status: "Processing"`), not the order tied to a specific `paymentID`. For a single in-flight checkout this is fine; for concurrent checkouts the backend should be tightened to match the order via the bKash `payerReference`/`merchantInvoiceNumber`.
+
+---
+
+## 10. Meta Module
+
+Parent route: `/api/v1/meta`
+
+### 10.1 GET /api/v1/meta — Dashboard metadata
+
+Protected — `admin`. Aggregates counts from all modules in real time.
+
+**Request:**
+```
+GET /api/v1/meta
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Metadata retrieved successfully",
+  "data": {
+    "totalProducts": 25,
+    "totalOrders": 150,
+    "totalUsers": 42,
+    "totalRevenue": 125000.0,
+    "totalCategories": 8,
+    "totalBrands": 12,
+    "totalReviews": 67,
+    "recentOrders": 18,
+    "lowStockProducts": 3
+  }
+}
+```
+
+Field meanings:
+- `totalRevenue` — sum of `finalAmount` across orders with `paymentStatus: "Paid"`.
+- `recentOrders` — orders created in the last 7 days.
+- `lowStockProducts` — active products with `stock < 5`.
+- Counts use active records where applicable (users, products, categories, brands).
+
+---
+
+## 11. Brand Module
+
+Parent route: `/api/v1/brand`
+
+Brand model fields: `name`, `logo`, `isActive`, `createdBy` (ObjectId → User, attached automatically), timestamps.
+
+### 11.1 GET /api/v1/brand — Get all brands
+
+Public. Returns **active only**, with `createdBy` populated (`name`, `email`).
+
+**Query params:** `searchTerm` (searches `name`), `page`, `limit`, `sort`, `fields`, plus filter: `isActive`.
+
+**Request:**
+```
+GET /api/v1/brand?searchTerm=nike&page=1&limit=10
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Brands retrieved successfully",
+  "meta": { "page": 1, "limit": 10, "total": 2, "totalPage": 1 },
+  "data": [
+    {
+      "_id": "665b1a2b3c4d5e6f7a8b9c0d",
+      "name": "Nike",
+      "logo": "https://res.cloudinary.com/.../nike.png",
+      "isActive": true,
+      "createdBy": { "_id": "664f...", "name": "Admin", "email": "admin@example.com" },
+      "createdAt": "2026-07-01T10:00:00.000Z",
+      "updatedAt": "2026-07-01T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+### 11.2 POST /api/v1/brand — Create brand
+
+Protected — `admin`. **Multipart form-data** — JSON payload in `data`, logo file in `logo` field (optional). Name uniqueness is case-insensitive.
+
+**Request:**
+```
+POST /api/v1/brand
+Authorization: Bearer <adminAccessToken>
+Content-Type: multipart/form-data
+
+Form fields:
+  data: {"name":"Nike","isActive":true}
+  logo: <image file> (optional)
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "Brand created successfully",
+  "data": {
+    "_id": "665b1a2b3c4d5e6f7a8b9c0d",
+    "name": "Nike",
+    "logo": "https://res.cloudinary.com/.../nike.png",
+    "isActive": true,
+    "createdBy": "664f1a2b3c4d5e6f7a8b9c0d",
+    "createdAt": "2026-07-01T10:00:00.000Z",
+    "updatedAt": "2026-07-01T10:00:00.000Z"
+  }
+}
+```
+
+**Errors:** 409 "Brand with this name already exists!"
+
+### 11.3 PATCH /api/v1/brand/:id — Update brand
+
+Protected — `admin`. **Multipart form-data** with `data` + optional `logo` file.
+
+**Request:**
+```
+PATCH /api/v1/brand/665b1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <adminAccessToken>
+Content-Type: multipart/form-data
+
+Form fields:
+  data: {"name":"Nike Updated"}
+  logo: <image file> (optional)
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Brand updated successfully",
+  "data": { "...": "updated brand" }
+}
+```
+
+### 11.4 DELETE /api/v1/brand/:id — Delete brand
+
+Protected — `admin`. **Soft delete** — sets `isActive: false`.
+
+**Request:**
+```
+DELETE /api/v1/brand/665b1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Brand deleted successfully",
+  "data": {
+    "_id": "665b1a2b3c4d5e6f7a8b9c0d",
+    "name": "Nike Updated",
+    "logo": "https://res.cloudinary.com/.../nike.png",
+    "isActive": false
+  }
+}
+```
+
+---
+
+## 12. Coupon Module
+
+Parent route: `/api/v1/coupon`
+
+Coupon model fields: `code` (uppercase, unique), `discountType` (`percentage` | `fixed`), `discountValue`, `minOrderAmount`, `maxDiscountAmount`, `startDate`, `endDate`, `isActive`, `isDeleted`, timestamps.
+
+### 12.1 POST /api/v1/coupon — Create coupon
+
+Protected — `admin`.
+
+**Request:**
+```
+POST /api/v1/coupon
+Authorization: Bearer <adminAccessToken>
+Content-Type: application/json
+
+{
+  "code": "SAVE20",
+  "discountType": "percentage",
+  "discountValue": 20,
+  "minOrderAmount": 500,
+  "maxDiscountAmount": 200,
+  "startDate": "2026-08-01",
+  "endDate": "2026-12-31"
+}
+```
+
+Required: `code`, `discountType`, `discountValue`, `startDate`, `endDate`. Optional: `minOrderAmount` (0), `maxDiscountAmount` (0), `isActive` (true). The code is stored uppercase; `endDate` must be after `startDate`.
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "Coupon created successfully",
+  "data": {
+    "_id": "666c1a2b3c4d5e6f7a8b9c0d",
+    "code": "SAVE20",
+    "discountType": "percentage",
+    "discountValue": 20,
+    "minOrderAmount": 500,
+    "maxDiscountAmount": 200,
+    "startDate": "2026-08-01T00:00:00.000Z",
+    "endDate": "2026-12-31T00:00:00.000Z",
+    "isActive": true,
+    "isDeleted": false,
+    "createdAt": "2026-07-31T10:00:00.000Z",
+    "updatedAt": "2026-07-31T10:00:00.000Z"
+  }
+}
+```
+
+**Errors:** 409 "Coupon with this code already exists!" / 400 "End date must be after start date!"
+
+### 12.2 GET /api/v1/coupon — Get all coupons
+
+Protected — `admin`. Soft-deleted coupons are excluded automatically.
+
+**Query params:** `searchTerm` (searches `code`), `page`, `limit`, `sort`, `fields`, plus filters: `discountType`, `isActive`, `isDeleted`.
+
+**Request:**
+```
+GET /api/v1/coupon?page=1&limit=10
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Coupons retrieved successfully",
+  "meta": { "page": 1, "limit": 10, "total": 1, "totalPage": 1 },
+  "data": [ { "...": "coupon object" } ]
+}
+```
+
+### 12.3 GET /api/v1/coupon/:couponCode — Get coupon by code
+
+Public. **Use this on the checkout page to validate a coupon before order creation.** Case-insensitive; validates date range and active status.
+
+**Request:**
+```
+GET /api/v1/coupon/SAVE20
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Coupon retrieved successfully",
+  "data": {
+    "_id": "666c1a2b3c4d5e6f7a8b9c0d",
+    "code": "SAVE20",
+    "discountType": "percentage",
+    "discountValue": 20,
+    "minOrderAmount": 500,
+    "maxDiscountAmount": 200,
+    "startDate": "2026-08-01T00:00:00.000Z",
+    "endDate": "2026-12-31T00:00:00.000Z",
+    "isActive": true,
+    "isDeleted": false
+  }
+}
+```
+
+**Errors:** 404 "Coupon not found!" / 400 "Coupon is not yet active!" / 400 "Coupon has expired!" / 400 "Coupon is not active!"
+
+### 12.4 PATCH /api/v1/coupon/:couponCode/update-coupon — Update coupon
+
+Protected — `admin`. Lookup is by coupon **code** (case-insensitive).
+
+**Request:**
+```
+PATCH /api/v1/coupon/SAVE20/update-coupon
+Authorization: Bearer <adminAccessToken>
+Content-Type: application/json
+
+{
+  "discountValue": 25,
+  "maxDiscountAmount": 250
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Coupon updated successfully",
+  "data": { "...": "updated coupon" }
+}
+```
+
+### 12.5 DELETE /api/v1/coupon/:couponId — Delete coupon
+
+Protected — `admin`. Lookup is by coupon **ID**. **Soft delete** — sets `isDeleted: true` and `isActive: false`.
+
+**Request:**
+```
+DELETE /api/v1/coupon/666c1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Coupon deleted successfully",
+  "data": {
+    "_id": "666c1a2b3c4d5e6f7a8b9c0d",
+    "code": "SAVE20",
+    "isDeleted": true,
+    "isActive": false,
+    "...": "rest of coupon fields"
+  }
+}
+```
+
+---
+
+## 13. Category Module
+
+Parent route: `/api/v1/category`
+
+Category model fields: `name`, `slug` (auto-generated), `description`, `parent` (ObjectId → Category, for subcategories), `isActive`, `createdBy` (ObjectId → User, attached automatically), `icon`, timestamps.
+
+### 13.1 GET /api/v1/category — Get all categories
+
+Public. Returns **active only**. `parent` (`name`, `slug`) and `createdBy` (`name`, `email`) are populated.
+
+**Query params:** `searchTerm` (searches `name`, `description`), `page`, `limit`, `sort`, `fields`, plus filters: `isActive`, `parent`.
+
+**Request:**
+```
+GET /api/v1/category?searchTerm=electronics
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Categories retrieved successfully",
+  "meta": { "page": 1, "limit": 10, "total": 2, "totalPage": 1 },
+  "data": [
+    {
+      "_id": "665a1a2b3c4d5e6f7a8b9c0d",
+      "name": "Electronics",
+      "slug": "electronics",
+      "description": "Electronic devices and accessories",
+      "parent": null,
+      "isActive": true,
+      "createdBy": { "_id": "664f...", "name": "Admin", "email": "admin@example.com" },
+      "icon": "https://res.cloudinary.com/.../icon.png",
+      "createdAt": "2026-07-01T10:00:00.000Z",
+      "updatedAt": "2026-07-01T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+### 13.2 POST /api/v1/category — Create category
+
+Protected — `admin`. **Multipart form-data** — JSON payload in `data`, icon file in `icon` field (optional). Slug is auto-generated from `name`. For a subcategory, pass the parent category ID.
+
+**Request:**
+```
+POST /api/v1/category
+Authorization: Bearer <adminAccessToken>
+Content-Type: multipart/form-data
+
+Form fields:
+  data: {"name":"Electronics","description":"Electronic devices","parent":"<parentCategoryId or null>"}
+  icon: <image file> (optional)
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "Category created successfully",
+  "data": {
+    "_id": "665a1a2b3c4d5e6f7a8b9c0d",
+    "name": "Electronics",
+    "slug": "electronics",
+    "description": "Electronic devices and accessories",
+    "parent": null,
+    "isActive": true,
+    "createdBy": "664f1a2b3c4d5e6f7a8b9c0d",
+    "icon": "https://res.cloudinary.com/.../icon.png",
+    "createdAt": "2026-07-01T10:00:00.000Z",
+    "updatedAt": "2026-07-01T10:00:00.000Z"
+  }
+}
+```
+
+**Errors:** 409 "Category with this name already exists!" / 404 invalid parent.
+
+### 13.3 PATCH /api/v1/category/:id — Update category
+
+Protected — `admin`. **Multipart form-data** with `data` + optional `icon` file.
+
+**Request:**
+```
+PATCH /api/v1/category/665a1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <adminAccessToken>
+Content-Type: multipart/form-data
+
+Form fields:
+  data: {"description":"Updated description"}
+  icon: <image file> (optional)
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Category updated successfully",
+  "data": { "...": "updated category with populated parent" }
+}
+```
+
+### 13.4 DELETE /api/v1/category/:id — Delete category
+
+Protected — `admin`. **Fails if the category has subcategories.** Soft delete — sets `isActive: false`.
+
+**Request:**
+```
+DELETE /api/v1/category/665a1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Category deleted successfully",
+  "data": {
+    "_id": "665a1a2b3c4d5e6f7a8b9c0d",
+    "name": "Electronics",
+    "isActive": false
+  }
+}
+```
+
+**Errors:** 400 "Cannot delete category with subcategories. Remove child categories first."
+
+---
+
+## 14. Review Module
+
+Parent route: `/api/v1/review`
+
+Review model fields: `rating` (1–5), `description`, `user` (ObjectId → User, attached automatically), `product` (ObjectId → Product), `isFlagged`, `flaggedReason`, `isVerifiedPurchase`, timestamps. **One review per user per product** (unique index).
+
+### 14.1 GET /api/v1/review — Get all reviews
+
+Public. `user` (`name`, `email`, `photoUrl`) and `product` (`name`, `slug`) are populated.
+
+**Query params:** `searchTerm` (searches `description`), `page`, `limit`, `sort`, `fields`, plus filters: `rating`, `isFlagged`, `isVerifiedPurchase`, `product`, `user`.
+
+**Request:**
+```
+GET /api/v1/review?product=664f1a2b3c4d5e6f7a8b9c0d&page=1&limit=10
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Reviews retrieved successfully",
+  "meta": { "page": 1, "limit": 10, "total": 3, "totalPage": 1 },
+  "data": [
+    {
+      "_id": "667d1a2b3c4d5e6f7a8b9c0d",
+      "rating": 4,
+      "description": "Great product! Highly recommended.",
+      "user": { "_id": "664f...", "name": "John Doe", "email": "customer@example.com", "photoUrl": "" },
+      "product": { "_id": "664f1a2b...", "name": "Smartphone X", "slug": "smartphone-x" },
+      "isFlagged": false,
+      "flaggedReason": "",
+      "isVerifiedPurchase": false,
+      "createdAt": "2026-07-20T10:00:00.000Z",
+      "updatedAt": "2026-07-20T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+### 14.2 GET /api/v1/review/:reviewId — Get single review
+
+Public.
+
+**Request:**
+```
+GET /api/v1/review/667d1a2b3c4d5e6f7a8b9c0d
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Review retrieved successfully",
+  "data": { "...": "same structure as list item" }
+}
+```
+
+### 14.3 POST /api/v1/review — Create review
+
+Protected — `admin`, `customer`. Duplicate user+product reviews are rejected. On creation, the product's `averageRating` and `ratingCount` are **recalculated automatically**.
+
+**Request:**
+```
+POST /api/v1/review
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "rating": 4,
+  "description": "Great product! Highly recommended.",
+  "product": "664f1a2b3c4d5e6f7a8b9c0d"
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "Review created successfully",
+  "data": {
+    "_id": "667d1a2b3c4d5e6f7a8b9c0d",
+    "rating": 4,
+    "description": "Great product! Highly recommended.",
+    "user": { "_id": "664f...", "name": "John Doe", "email": "customer@example.com", "photoUrl": "" },
+    "product": { "_id": "664f1a2b...", "name": "Smartphone X", "slug": "smartphone-x" },
+    "isFlagged": false,
+    "flaggedReason": "",
+    "isVerifiedPurchase": false,
+    "createdAt": "2026-07-20T10:00:00.000Z",
+    "updatedAt": "2026-07-20T10:00:00.000Z"
+  }
+}
+```
+
+**Errors:** 404 "Product not found!" / 400 "Product is not available!" / 409 "You have already reviewed this product!"
+
+---
+
+## 15. Payment Flow Walkthroughs
+
+### Stripe (recommended for international payments)
+
+```
+1. POST /api/v1/order                     (create order, paymentMethod: "Online")
+2. POST /api/v1/payment/:orderId/stripe/init   { amount, currency: "usd" }
+   → data: { gatewayUrl, sessionId }
+3. window.location.href = data.gatewayUrl      (user pays on Stripe hosted page)
+4. Stripe redirects to:
+   /api/v1/payment/stripe/success?session_id=...&orderId=...
+   → server validates → redirects browser to FRONTEND_URL/payment/success?tran_id=...
+   (or /payment/failed on cancel)
+5. Done — no manual validate call needed (the /stripe/validate route is not
+   registered server-side; the redirect callback performs validation)
+```
+
+### SSLCommerz (Bangladesh)
+
+```
+1. POST /api/v1/order                     (create order, paymentMethod: "Online")
+2. POST /api/v1/payment/:orderId/sslcommerz/init  (full cus_* and ship_* details)
+   → data: { gatewayUrl, sessionId }
+3. window.location.href = data.gatewayUrl      (user pays on SSLCommerz page)
+4. SSLCommerz redirects to /api/v1/payment/sslcommerz/validate?val_id=...&tran_id=...
+   → server validates → redirects browser to FRONTEND_URL/payment/success?tran_id=...
+   (or /payment/failed?tran_id=... on failure)
+5. Done — the validate endpoint only issues redirects (no JSON); use the
+   FRONTEND_URL redirect target to read the result
+```
+
+### bKash (Bangladesh mobile banking)
+
+```
+1. POST /api/v1/order                     (create order, paymentMethod: "Online")
+2. POST /api/v1/payment/:orderId/bkash/init  { amount, customerNumber }
+   → data: { gatewayUrl }
+3. window.location.href = data.gatewayUrl      (user completes payment in bKash)
+4. bKash calls the configured callback URL (BKASH_CALLBACK_URL) with a paymentID
+5. Frontend (or server callback) calls:
+   POST /api/v1/payment/bkash/validate { paymentID } → JSON, confirm success
+```
+
+### Payment result handling on the frontend
+
+The backend redirects the browser to:
+
+| Result | URL |
+|---|---|
+| Success | `FRONTEND_URL/payment/success?tran_id=<transactionId>` |
+| Failure | `FRONTEND_URL/payment/failed?tran_id=<transactionId>` (or `?tran_id=` empty for Stripe cancel) |
+
+**You must implement these two frontend routes** to display the payment outcome. On the success page, fetch the order (with `GET /api/v1/order/:orderId`) to confirm `paymentStatus: "Paid"` and `status: "Processing"`.
+
+---
+
+## 16. Frontend Integration Notes
+
+### 16.1 Setting up an API client
+
+- **Base URL**: `http://localhost:3001/api/v1` (dev). In production use the deployed server URL.
+- **With credentials**: use `credentials: "include"` (or `withCredentials: true` in Axios) so the `refreshToken` cookie is sent with `/auth/refresh-token`.
+- **CORS**: the server currently allows only `http://localhost:3000`. In production the server's CORS origin must be updated to the deployed frontend URL.
+
+### 16.2 Authorization header helper
+
+```
+Authorization: Bearer <accessToken>
+```
+
+Store the access token after login/register/refresh and attach it to every request to a protected endpoint. On a 401 response, attempt a refresh (`POST /auth/refresh-token`), then retry the original request once.
+
+### 16.3 Multipart uploads (create/update with files)
+
+These endpoints require `multipart/form-data` with the JSON payload **inside a `data` field**:
+
+| Endpoint | `data` field | File field |
+|---|---|---|
+| `PATCH /user/update-profile` | JSON | `profilePhoto` (single) |
+| `POST|PATCH /product[/:productId]` | JSON | `images` (array, max 10) |
+| `POST|PATCH /brand[/:id]` | JSON | `logo` (single) |
+| `POST|PATCH /category[/:id]` | JSON | `icon` (single) |
+
+Example with `fetch`/`FormData`:
+
+```js
+const form = new FormData();
+form.append("data", JSON.stringify({ name: "Nike", isActive: true }));
+form.append("logo", logoFile); // File object
+
+const res = await fetch(`${BASE}/brand`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${token}` }, // do NOT set Content-Type
+  body: form,
+});
+```
+
+> Do **not** manually set `Content-Type: multipart/form-data` — the browser adds the boundary automatically. If the `data` field is missing, the server responds 400 "Please provide data in the body under data key".
+
+### 16.4 Response parsing
+
+- Check `success`. If `false`, show `message` (and optionally `errorSources[].message` per field).
+- On list endpoints, use `meta` (`page`, `limit`, `total`, `totalPage`) for pagination UI.
+
+### 16.5 Role-based UI
+
+Guard admin UI (dashboard, product/brand/category/coupon creation, order status changes, user management) behind role `admin`. The access token is a JWT — decode its payload to read `{ userId, name, email, role, isActive }`.
+
+### 16.6 Populated references
+
+Product/category/brand/review/order responses contain **populated embedded objects** instead of raw IDs for some fields:
+
+- Product → `category: { _id, name, slug }`, `brand: { _id, name, logo }`
+- Category → `parent: { _id, name, slug }` (or `null`), `createdBy: { _id, name, email }`
+- Review → `user: { _id, name, email, photoUrl }`, `product: { _id, name, slug }`
+- Order → `user: { ... }`, `products[].product: { ... }`
+
+When sending these fields (e.g. `category` on product create), send the **plain ObjectId string**, not the populated object.
+
+### 16.7 Typical customer flow to implement
+
+1. Browse: `GET /product` (with filters) → product detail `GET /product/:id` → reviews `GET /review?product=<id>`
+2. Validate coupon at checkout: `GET /coupon/<CODE>`
+3. Create order: `POST /order` (paymentMethod `"COD"` or `"Online"`)
+4. Pay online: call the provider init endpoint → redirect to `gatewayUrl`
+5. Handle redirect back on `/payment/success` / `/payment/failed`
+6. View orders: `GET /order/:id`
+
+### 16.8 Typical admin flow to implement
+
+1. Login as admin → `GET /user` (manage users), `PATCH /user/:id/status`
+2. Manage catalog: CRUD `category`, `brand`, `product` (multipart)
+3. Manage coupons: CRUD `coupon`
+4. Manage orders: `GET /order`, `PATCH /order/:id/status`
+5. Dashboard: `GET /meta`
+6. Moderate reviews: `GET /review?isFlagged=true`
+
+---
+
+## Appendix — Complete endpoint summary
+
+| # | Method | Route | Auth | Multipart |
+|---|---|---|---|---|
+| 1 | POST | `/api/v1/auth/login` | – | – |
+| 2 | POST | `/api/v1/auth/refresh-token` | – | – |
+| 3 | POST | `/api/v1/auth/change-password` | admin, customer | – |
+| 4 | POST | `/api/v1/auth/forgot-password` | – | – |
+| 5 | POST | `/api/v1/auth/verify-otp` | – | – |
+| 6 | POST | `/api/v1/auth/reset-password` | – | – |
+| 7 | POST | `/api/v1/user/register` | – | – |
+| 8 | GET | `/api/v1/user` | admin | – |
+| 9 | GET | `/api/v1/user/me` | admin, customer | – |
+| 10 | PATCH | `/api/v1/user/update-profile` | admin, manager, customer | ✅ `data` + `profilePhoto` |
+| 11 | PATCH | `/api/v1/user/:id/status` | admin | – |
+| 12 | GET | `/api/v1/product` | – | – |
+| 13 | GET | `/api/v1/product/:productId` | – | – |
+| 14 | POST | `/api/v1/product` | admin | ✅ `data` + `images` (≤10) |
+| 15 | PATCH | `/api/v1/product/:productId` | admin | ✅ `data` + `images` |
+| 16 | DELETE | `/api/v1/product/:productId` | admin | – |
+| 17 | GET | `/api/v1/order` | admin | – |
+| 18 | GET | `/api/v1/order/:orderId` | admin, customer | – |
+| 19 | POST | `/api/v1/order` | admin, customer | – |
+| 20 | PATCH | `/api/v1/order/:orderId/status` | admin | – |
+| 21 | POST | `/api/v1/payment/:orderId/stripe/init` | admin, customer | – |
+| 22 | GET/POST | `/api/v1/payment/stripe/success` | – (callback, redirects to frontend) | – |
+| 23 | GET/POST | `/api/v1/payment/stripe/cancel` | – (callback, redirects to frontend) | – |
+| 24 | POST | `/api/v1/payment/:orderId/sslcommerz/init` | admin, customer | – |
+| 25 | GET/POST | `/api/v1/payment/sslcommerz/validate` | – (callback, always redirects) | – |
+| 26 | POST | `/api/v1/payment/:orderId/bkash/init` | admin, customer | – |
+| 27 | POST | `/api/v1/payment/bkash/validate` | admin, customer | – |
+| 28 | GET | `/api/v1/meta` | admin | – |
+| 29 | GET | `/api/v1/brand` | – | – |
+| 30 | POST | `/api/v1/brand` | admin | ✅ `data` + `logo` |
+| 31 | PATCH | `/api/v1/brand/:id` | admin | ✅ `data` + `logo` |
+| 32 | DELETE | `/api/v1/brand/:id` | admin | – |
+| 33 | POST | `/api/v1/coupon` | admin | – |
+| 34 | GET | `/api/v1/coupon` | admin | – |
+| 35 | GET | `/api/v1/coupon/:couponCode` | – | – |
+| 36 | PATCH | `/api/v1/coupon/:couponCode/update-coupon` | admin | – |
+| 37 | DELETE | `/api/v1/coupon/:couponId` | admin | – |
+| 38 | GET | `/api/v1/category` | – | – |
+| 39 | POST | `/api/v1/category` | admin | ✅ `data` + `icon` |
+| 40 | PATCH | `/api/v1/category/:id` | admin | ✅ `data` + `icon` |
+| 41 | DELETE | `/api/v1/category/:id` | admin | – |
+| 42 | GET | `/api/v1/review` | – | – |
+| 43 | GET | `/api/v1/review/:reviewId` | – | – |
+| 44 | POST | `/api/v1/review` | admin, customer | – |

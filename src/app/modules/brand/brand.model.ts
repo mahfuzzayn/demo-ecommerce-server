@@ -19,6 +19,10 @@ const brandSchema = new Schema<IBrand, BrandModel>(
             type: Boolean,
             default: true,
         },
+        isDeleted: {
+            type: Boolean,
+            default: false,
+        },
         createdBy: {
             type: Schema.Types.ObjectId,
             ref: "User",
