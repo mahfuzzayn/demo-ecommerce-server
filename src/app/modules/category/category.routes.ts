@@ -11,6 +11,8 @@ const router = Router();
 
 router.get("/", CategoryController.getAllCategories);
 
+router.get("/:id", CategoryController.getSingleCategory);
+
 router.post(
     "/",
     auth(UserRole.ADMIN),

@@ -6,10 +6,37 @@ import Review from "./review.model";
 import Product from "../product/product.model";
 import { ReviewSearchableFields } from "./review.constant";
 import { IJwtPayload } from "../auth/auth.interface";
+import { Types } from "mongoose";
+
+// Recalculate a product's averageRating/ratingCount from its non-flagged reviews
+const recalcProductRating = async (productId: Types.ObjectId | string) => {
+    const ratingStats = await Review.aggregate([
+        { $match: { product: productId, isFlagged: false } },
+        {
+            $group: {
+                _id: "$product",
+                averageRating: { $avg: "$rating" },
+                ratingCount: { $sum: 1 },
+            },
+        },
+    ]);
+
+    if (ratingStats.length > 0) {
+        await Product.findByIdAndUpdate(productId, {
+            averageRating: Math.round(ratingStats[0].averageRating * 10) / 10,
+            ratingCount: ratingStats[0].ratingCount,
+        });
+    } else {
+        await Product.findByIdAndUpdate(productId, {
+            averageRating: 0,
+            ratingCount: 0,
+        });
+    }
+};
 
 const getAllReviews = async (query: Record<string, unknown>) => {
     const reviewQuery = new QueryBuilder(
-        Review.find()
+        Review.find({ isFlagged: false })
             .populate("user", "name email photoUrl")
             .populate("product", "name slug"),
         query,
@@ -27,7 +54,10 @@ const getAllReviews = async (query: Record<string, unknown>) => {
 };
 
 const getSingleReview = async (reviewId: string) => {
-    const review = await Review.findById(reviewId)
+    const review = await Review.findOne({
+        _id: reviewId,
+        isFlagged: false,
+    })
         .populate("user", "name email photoUrl")
         .populate("product", "name slug");
 
@@ -42,8 +72,11 @@ const createReview = async (
     payload: IReview,
     authUser: IJwtPayload,
 ) => {
-    // Check if product exists
-    const product = await Product.findById(payload.product);
+    // Check if product exists and is not deleted
+    const product = await Product.findOne({
+        _id: payload.product,
+        isDeleted: false,
+    });
     if (!product) {
         throw new AppError(StatusCodes.NOT_FOUND, "Product not found!");
     }
@@ -76,24 +109,15 @@ const createReview = async (
 
     const review = await Review.create(payload);
 
-    // Update product average rating
-    const ratingStats = await Review.aggregate([
-        { $match: { product: review.product } },
-        {
-            $group: {
-                _id: "$product",
-                averageRating: { $avg: "$rating" },
-                ratingCount: { $sum: 1 },
-            },
-        },
-    ]);
+    // Add the review id to the product's reviews array
+    await Product.findByIdAndUpdate(
+        review.product,
+        { $addToSet: { reviews: review._id } },
+        { new: true },
+    );
 
-    if (ratingStats.length > 0) {
-        await Product.findByIdAndUpdate(review.product, {
-            averageRating: Math.round(ratingStats[0].averageRating * 10) / 10,
-            ratingCount: ratingStats[0].ratingCount,
-        });
-    }
+    // Update product average rating
+    await recalcProductRating(review.product);
 
     const populatedReview = await Review.findById(review._id)
         .populate("user", "name email photoUrl")
@@ -102,8 +126,44 @@ const createReview = async (
     return populatedReview;
 };
 
+// Admin toggles a review's isFlagged status
+const toggleReviewFlag = async (reviewId: string) => {
+    const review = await Review.checkReviewExist(reviewId);
+
+    review.isFlagged = !review.isFlagged;
+    await review.save();
+
+    // Recalculate the product rating so flagged reviews don't count
+    await recalcProductRating(review.product);
+
+    return review;
+};
+
+// Admin deletes a review (hard delete) and removes it from the product
+const deleteReview = async (reviewId: string) => {
+    const review = await Review.checkReviewExist(reviewId);
+
+    const productId = review.product;
+
+    await Review.findByIdAndDelete(reviewId);
+
+    // Remove the review id from the product's reviews array
+    await Product.findByIdAndUpdate(
+        productId,
+        { $pull: { reviews: reviewId } },
+        { new: true },
+    );
+
+    // Recalculate the product rating
+    await recalcProductRating(productId);
+
+    return review;
+};
+
 export const ReviewServices = {
     getAllReviews,
     getSingleReview,
     createReview,
+    toggleReviewFlag,
+    deleteReview,
 };

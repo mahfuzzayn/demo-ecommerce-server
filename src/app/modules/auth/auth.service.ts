@@ -148,6 +148,14 @@ const changePassword = async (
         throw new AppError(StatusCodes.FORBIDDEN, "Incorrect old password");
     }
 
+    // New password must differ from the old one
+    if (newPassword === oldPassword) {
+        throw new AppError(
+            StatusCodes.BAD_REQUEST,
+            "New password must be different from the old password",
+        );
+    }
+
     // Hash and update the new password
     const hashedPassword = await bcrypt.hash(
         newPassword,

@@ -13,9 +13,21 @@ router.get("/:reviewId", ReviewController.getSingleReview);
 
 router.post(
     "/",
-    auth(UserRole.ADMIN, UserRole.CUSTOMER),
+    auth(UserRole.CUSTOMER),
     validateRequest(ReviewValidation.createReviewValidationSchema),
     ReviewController.createReview,
+);
+
+router.patch(
+    "/:reviewId/status",
+    auth(UserRole.ADMIN),
+    ReviewController.toggleReviewFlag,
+);
+
+router.delete(
+    "/:reviewId",
+    auth(UserRole.ADMIN),
+    ReviewController.deleteReview,
 );
 
 export const ReviewRoutes = router;

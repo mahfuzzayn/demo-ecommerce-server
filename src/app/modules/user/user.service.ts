@@ -55,8 +55,14 @@ const registerUser = async (userData: IUser) => {
     }
 };
 
-const getAllUser = async (query: Record<string, unknown>) => {
-    const UserQuery = new QueryBuilder(User.find(), query)
+const getAllUser = async (
+    query: Record<string, unknown>,
+    authUser: IJwtPayload,
+) => {
+    const UserQuery = new QueryBuilder(
+        User.find({ _id: { $ne: authUser.userId } }),
+        query,
+    )
         .search(UserSearchableFields)
         .filter()
         .sort()

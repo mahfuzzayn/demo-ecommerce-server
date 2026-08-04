@@ -24,9 +24,10 @@ const userValidationSchema = z.object({
     }),
 });
 
-const customerInfoValidationSchema = z.object({
+const userProfileUpdateSchema = z.object({
     body: z
         .object({
+            name: z.string().min(1, "Name is required").optional(),
             phoneNo: z
                 .string()
                 .regex(
@@ -40,13 +41,12 @@ const customerInfoValidationSchema = z.object({
                 .optional(),
             dateOfBirth: z
                 .string()
-                .optional()
                 .refine((value) => !value || !isNaN(Date.parse(value)), {
                     message: "Invalid date format. Must be a valid date.",
                 })
                 .optional(),
             address: z.string().optional(),
-            photo: z
+            photoUrl: z
                 .string()
                 .regex(
                     /^(http(s)?:\/\/.*\.(?:png|jpg|jpeg))$/,
@@ -59,5 +59,5 @@ const customerInfoValidationSchema = z.object({
 
 export const UserValidation = {
     userValidationSchema,
-    customerInfoValidationSchema,
+    userProfileUpdateSchema,
 };

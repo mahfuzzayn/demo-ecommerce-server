@@ -26,6 +26,21 @@ const userSchema = new Schema<IUser, UserModel>(
             enum: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CUSTOMER],
             default: UserRole.CUSTOMER,
         },
+        phoneNo: {
+            type: String,
+            trim: true,
+        },
+        gender: {
+            type: String,
+            enum: ["Male", "Female", "Other"],
+        },
+        dateOfBirth: {
+            type: Date,
+        },
+        address: {
+            type: String,
+            trim: true,
+        },
         photoUrl: {
             type: String,
             required: false,

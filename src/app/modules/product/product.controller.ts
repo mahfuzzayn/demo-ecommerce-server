@@ -4,6 +4,7 @@ import { StatusCodes } from "http-status-codes";
 import sendResponse from "../../utils/sendResponse";
 import catchAsync from "../../utils/catchAsync";
 import { IImageFile } from "../../interface/IImageFile";
+import { IJwtPayload } from "../auth/auth.interface";
 
 const getAllProducts = catchAsync(async (req: Request, res: Response) => {
     const result = await ProductServices.getAllProducts(req.query);
@@ -19,7 +20,7 @@ const getAllProducts = catchAsync(async (req: Request, res: Response) => {
 
 const getSingleProduct = catchAsync(async (req: Request, res: Response) => {
     const { productId } = req.params;
-    const result = await ProductServices.getSingleProduct(productId);
+    const result = await ProductServices.getSingleProduct(productId as string);
 
     sendResponse(res, {
         statusCode: StatusCodes.OK,
@@ -31,7 +32,11 @@ const getSingleProduct = catchAsync(async (req: Request, res: Response) => {
 
 const createProduct = catchAsync(async (req: Request, res: Response) => {
     const files = req.files as IImageFile[];
-    const result = await ProductServices.createProduct(req.body, files);
+    const result = await ProductServices.createProduct(
+        req.body,
+        req.user as IJwtPayload,
+        files,
+    );
 
     sendResponse(res, {
         statusCode: StatusCodes.CREATED,
@@ -45,7 +50,7 @@ const updateProduct = catchAsync(async (req: Request, res: Response) => {
     const { productId } = req.params;
     const files = req.files as IImageFile[];
     const result = await ProductServices.updateProduct(
-        productId,
+        productId as string,
         req.body,
         files,
     );
@@ -60,7 +65,7 @@ const updateProduct = catchAsync(async (req: Request, res: Response) => {
 
 const deleteProduct = catchAsync(async (req: Request, res: Response) => {
     const { productId } = req.params;
-    const result = await ProductServices.deleteProduct(productId);
+    const result = await ProductServices.deleteProduct(productId as string);
 
     sendResponse(res, {
         statusCode: StatusCodes.OK,

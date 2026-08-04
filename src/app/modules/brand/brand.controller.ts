@@ -18,6 +18,18 @@ const getAllBrands = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getSingleBrand = catchAsync(async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const result = await BrandServices.getSingleBrand(id);
+
+    sendResponse(res, {
+        statusCode: StatusCodes.OK,
+        success: true,
+        message: "Brand retrieved successfully",
+        data: result,
+    });
+});
+
 const createBrand = catchAsync(async (req: Request, res: Response) => {
     const result = await BrandServices.createBrand(
         req.body,
@@ -63,6 +75,7 @@ const deleteBrand = catchAsync(async (req: Request, res: Response) => {
 
 export const BrandController = {
     getAllBrands,
+    getSingleBrand,
     createBrand,
     updateBrand,
     deleteBrand,

@@ -18,6 +18,18 @@ const getAllCategories = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getSingleCategory = catchAsync(async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const result = await CategoryServices.getSingleCategory(id);
+
+    sendResponse(res, {
+        statusCode: StatusCodes.OK,
+        success: true,
+        message: "Category retrieved successfully",
+        data: result,
+    });
+});
+
 const createCategory = catchAsync(async (req: Request, res: Response) => {
     const result = await CategoryServices.createCategory(
         req.body,
@@ -63,6 +75,7 @@ const deleteCategory = catchAsync(async (req: Request, res: Response) => {
 
 export const CategoryController = {
     getAllCategories,
+    getSingleCategory,
     createCategory,
     updateCategory,
     deleteCategory,

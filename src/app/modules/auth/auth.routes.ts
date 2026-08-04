@@ -8,7 +8,12 @@ import { AuthValidation } from "./auth.validation";
 
 const router = Router();
 
-router.post("/login", clientInfoParser, AuthController.loginUser);
+router.post(
+    "/login",
+    clientInfoParser,
+    validateRequest(AuthValidation.loginZodSchema),
+    AuthController.loginUser,
+);
 
 router.post(
     "/refresh-token",
@@ -19,11 +24,26 @@ router.post(
 router.post(
     "/change-password",
     auth(UserRole.ADMIN, UserRole.CUSTOMER),
+    validateRequest(AuthValidation.changePasswordZodSchema),
     AuthController.changePassword,
 );
 
-router.post("/forgot-password", AuthController.forgotPassword);
-router.post("/verify-otp", AuthController.verifyOTP);
-router.post("/reset-password", AuthController.resetPassword);
+router.post(
+    "/forgot-password",
+    validateRequest(AuthValidation.forgotPasswordZodSchema),
+    AuthController.forgotPassword,
+);
+
+router.post(
+    "/verify-otp",
+    validateRequest(AuthValidation.verifyOTPZodSchema),
+    AuthController.verifyOTP,
+);
+
+router.post(
+    "/reset-password",
+    validateRequest(AuthValidation.resetPasswordZodSchema),
+    AuthController.resetPassword,
+);
 
 export const AuthRoutes = router;

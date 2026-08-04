@@ -27,7 +27,7 @@ router.patch(
    auth(UserRole.ADMIN, UserRole.MANAGER, UserRole.CUSTOMER),
    multerUpload.single('profilePhoto'),
    parseBody,
-   validateRequest(UserValidation.customerInfoValidationSchema),
+   validateRequest(UserValidation.userProfileUpdateSchema),
    UserController.updateProfile
 );
 

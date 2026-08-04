@@ -30,7 +30,10 @@ const registerUser = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getAllUser = catchAsync(async (req, res) => {
-    const result = await UserServices.getAllUser(req.query);
+    const result = await UserServices.getAllUser(
+        req.query,
+        req.user as IJwtPayload,
+    );
 
     sendResponse(res, {
         statusCode: StatusCodes.OK,

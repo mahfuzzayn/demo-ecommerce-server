@@ -21,6 +21,19 @@ const getAllBrands = async (query: Record<string, unknown>) => {
     return { result, meta };
 };
 
+const getSingleBrand = async (brandId: string) => {
+    const brand = await Brand.findOne({
+        _id: brandId,
+        isDeleted: false,
+    }).populate("createdBy", "name email");
+
+    if (!brand) {
+        throw new AppError(StatusCodes.NOT_FOUND, "Brand does not exist!");
+    }
+
+    return brand;
+};
+
 const createBrand = async (
     payload: IBrand,
     authUser: IJwtPayload,
@@ -77,6 +90,7 @@ const deleteBrand = async (brandId: string) => {
 
 export const BrandServices = {
     getAllBrands,
+    getSingleBrand,
     createBrand,
     updateBrand,
     deleteBrand,

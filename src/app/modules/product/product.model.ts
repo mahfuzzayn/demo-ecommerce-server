@@ -26,7 +26,7 @@ const productSchema = new Schema<IProduct, ProductModel>(
         },
         slug: {
             type: String,
-            required: true,
+            required: false,
             unique: true,
             lowercase: true,
         },
@@ -63,11 +63,27 @@ const productSchema = new Schema<IProduct, ProductModel>(
             type: Boolean,
             default: true,
         },
+        isDeleted: {
+            type: Boolean,
+            default: false,
+        },
         brand: {
             type: Schema.Types.ObjectId,
             ref: "Brand",
             required: true,
         },
+        createdBy: {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+        },
+        reviews: [
+            {
+                type: Schema.Types.ObjectId,
+                ref: "Review",
+                default: [],
+            },
+        ],
         averageRating: {
             type: Number,
             default: 0,
@@ -104,9 +120,9 @@ const productSchema = new Schema<IProduct, ProductModel>(
     },
 );
 
-// Generate slug from name before saving
+// Generate slug from name before saving only when a slug isn't provided
 productSchema.pre("save", async function (next) {
-    if (this.isModified("name") || this.isNew) {
+    if (this.isModified("name") && !this.slug) {
         this.slug = this.name
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
@@ -116,14 +132,13 @@ productSchema.pre("save", async function (next) {
 });
 
 productSchema.statics.checkProductExist = async function (productId: string) {
-    const existingProduct = await this.findById(productId);
+    const existingProduct = await this.findOne({
+        _id: productId,
+        isDeleted: false,
+    });
 
     if (!existingProduct) {
         throw new AppError(StatusCodes.NOT_FOUND, "Product does not exist!");
-    }
-
-    if (!existingProduct.isActive) {
-        throw new AppError(StatusCodes.BAD_REQUEST, "Product is not active!");
     }
 
     return existingProduct;

@@ -17,7 +17,10 @@ export interface IProduct extends Document {
     category: Types.ObjectId;
     imageUrls: string[];
     isActive: boolean;
+    isDeleted: boolean;
     brand: Types.ObjectId;
+    createdBy: Types.ObjectId;
+    reviews: Types.ObjectId[];
     averageRating: number;
     ratingCount: number;
     availableColors: string[];

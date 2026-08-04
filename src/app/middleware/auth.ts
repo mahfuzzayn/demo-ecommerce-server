@@ -50,6 +50,9 @@ const auth = (...requiredRoles: UserRole[]) => {
                 req.user = decoded as JwtPayload & { role: string };
                 next();
             } catch (error) {
+                if (error instanceof AppError) {
+                    return next(error);
+                }
                 if (error instanceof TokenExpiredError) {
                     return next(
                         new AppError(

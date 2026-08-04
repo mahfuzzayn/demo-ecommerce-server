@@ -12,7 +12,8 @@
       "Shell(npx -p typescript tsc --noEmit 2 >& 1)",
       "Shell(.node_modules.bintsc:*)",
       "Shell(npx --package typescript@5.7.2 tsc --noEmit 2 >& 1)",
-      "Shell(findstr:*)"
+      "Shell(findstr:*)",
+      "Shell(npx tsc --noEmit)"
     ],
     "deny": [],
     "defaultMode": "default"

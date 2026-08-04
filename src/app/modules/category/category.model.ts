@@ -13,7 +13,7 @@ const categorySchema = new Schema<ICategory, CategoryModel>(
         },
         slug: {
             type: String,
-            required: true,
+            required: false,
             unique: true,
             lowercase: true,
         },
@@ -29,6 +29,10 @@ const categorySchema = new Schema<ICategory, CategoryModel>(
         isActive: {
             type: Boolean,
             default: true,
+        },
+        isDeleted: {
+            type: Boolean,
+            default: false,
         },
         createdBy: {
             type: Schema.Types.ObjectId,
@@ -51,9 +55,9 @@ const categorySchema = new Schema<ICategory, CategoryModel>(
     },
 );
 
-// Generate slug from name before saving
+// Generate slug from name before saving only when a slug isn't provided
 categorySchema.pre("save", async function (next) {
-    if (this.isModified("name") || this.isNew) {
+    if (this.isModified("name") && !this.slug) {
         this.slug = this.name
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
@@ -65,7 +69,10 @@ categorySchema.pre("save", async function (next) {
 categorySchema.statics.checkCategoryExist = async function (
     categoryId: string,
 ) {
-    const existingCategory = await this.findById(categoryId);
+    const existingCategory = await this.findOne({
+        _id: categoryId,
+        isDeleted: false,
+    });
 
     if (!existingCategory) {
         throw new AppError(
@@ -84,6 +91,18 @@ categorySchema.statics.isCategoryNameUnique = async function (
     const query: Record<string, unknown> = {
         name: { $regex: new RegExp(`^${name}$`, "i") },
     };
+    if (excludeId) {
+        query._id = { $ne: excludeId };
+    }
+    const existing = await this.findOne(query);
+    return !existing;
+};
+
+categorySchema.statics.isSlugUnique = async function (
+    slug: string,
+    excludeId?: string,
+) {
+    const query: Record<string, unknown> = { slug };
     if (excludeId) {
         query._id = { $ne: excludeId };
     }

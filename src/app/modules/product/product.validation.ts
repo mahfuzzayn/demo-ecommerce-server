@@ -8,6 +8,11 @@ const specificationSchema = z.object({
 const createProductValidationSchema = z.object({
     body: z.object({
         name: z.string().min(1, "Product name is required"),
+        slug: z
+            .string()
+            .min(1, "Slug cannot be empty")
+            .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Invalid slug format")
+            .optional(),
         description: z.string().min(1, "Description is required"),
         price: z.number().min(0, "Price must be a positive number"),
         stock: z.number().min(0, "Stock must be a non-negative number").default(0),
@@ -25,6 +30,11 @@ const createProductValidationSchema = z.object({
 const updateProductValidationSchema = z.object({
     body: z.object({
         name: z.string().min(1, "Product name is required").optional(),
+        slug: z
+            .string()
+            .min(1, "Slug cannot be empty")
+            .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Invalid slug format")
+            .optional(),
         description: z.string().min(1, "Description is required").optional(),
         price: z.number().min(0, "Price must be a positive number").optional(),
         stock: z.number().min(0, "Stock must be a non-negative number").optional(),

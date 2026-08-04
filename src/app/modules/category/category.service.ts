@@ -6,10 +6,11 @@ import Category from "./category.model";
 import { CategorySearchableFields } from "./category.constant";
 import { IJwtPayload } from "../auth/auth.interface";
 import { IImageFile } from "../../interface/IImageFile";
+import { generateSlug } from "../../utils/generateSlug";
 
 const getAllCategories = async (query: Record<string, unknown>) => {
     const categoryQuery = new QueryBuilder(
-        Category.find().populate("parent", "name slug"),
+        Category.find({ isDeleted: false }).populate("parent", "name slug"),
         query,
     )
         .search(CategorySearchableFields)
@@ -25,6 +26,19 @@ const getAllCategories = async (query: Record<string, unknown>) => {
     const meta = await categoryQuery.countTotal();
 
     return { result, meta };
+};
+
+const getSingleCategory = async (categoryId: string) => {
+    const category = await Category.findOne({
+        _id: categoryId,
+        isDeleted: false,
+    }).populate("parent", "name slug");
+
+    if (!category) {
+        throw new AppError(StatusCodes.NOT_FOUND, "Category does not exist!");
+    }
+
+    return category;
 };
 
 const createCategory = async (
@@ -51,6 +65,26 @@ const createCategory = async (
         await Category.checkCategoryExist(payload.parent.toString());
     }
 
+    // Auto-generate a unique slug from the name if not provided
+    if (!payload.slug) {
+        const baseSlug = payload.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/(^-|-$)/g, "");
+        const isBaseSlugUnique = await Category.isSlugUnique(baseSlug);
+        payload.slug = isBaseSlugUnique
+            ? baseSlug
+            : generateSlug(payload.name);
+    } else {
+        const isSlugUnique = await Category.isSlugUnique(payload.slug);
+        if (!isSlugUnique) {
+            throw new AppError(
+                StatusCodes.CONFLICT,
+                "Category with this slug already exists!",
+            );
+        }
+    }
+
     const category = await Category.create(payload);
     return category;
 };
@@ -71,6 +105,19 @@ const updateCategory = async (
             throw new AppError(
                 StatusCodes.CONFLICT,
                 "Category with this name already exists!",
+            );
+        }
+    }
+
+    if (payload.slug) {
+        const isSlugUnique = await Category.isSlugUnique(
+            payload.slug,
+            categoryId,
+        );
+        if (!isSlugUnique) {
+            throw new AppError(
+                StatusCodes.CONFLICT,
+                "Category with this slug already exists!",
             );
         }
     }
@@ -103,6 +150,7 @@ const deleteCategory = async (categoryId: string) => {
         );
     }
 
+    category.isDeleted = true;
     category.isActive = false;
     await category.save();
 
@@ -111,6 +159,7 @@ const deleteCategory = async (categoryId: string) => {
 
 export const CategoryServices = {
     getAllCategories,
+    getSingleCategory,
     createCategory,
     updateCategory,
     deleteCategory,

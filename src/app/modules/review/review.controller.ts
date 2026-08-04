@@ -43,8 +43,34 @@ const createReview = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const toggleReviewFlag = catchAsync(async (req: Request, res: Response) => {
+    const reviewId = req.params.reviewId as string;
+    const result = await ReviewServices.toggleReviewFlag(reviewId);
+
+    sendResponse(res, {
+        statusCode: StatusCodes.OK,
+        success: true,
+        message: `Review is now ${result.isFlagged ? "flagged" : "unflagged"}`,
+        data: result,
+    });
+});
+
+const deleteReview = catchAsync(async (req: Request, res: Response) => {
+    const reviewId = req.params.reviewId as string;
+    const result = await ReviewServices.deleteReview(reviewId);
+
+    sendResponse(res, {
+        statusCode: StatusCodes.OK,
+        success: true,
+        message: "Review deleted successfully",
+        data: result,
+    });
+});
+
 export const ReviewController = {
     getAllReviews,
     getSingleReview,
     createReview,
+    toggleReviewFlag,
+    deleteReview,
 };
