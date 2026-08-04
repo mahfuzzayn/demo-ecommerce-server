@@ -3,8 +3,9 @@ import { SettingsServices } from "./settings.service";
 import { StatusCodes } from "http-status-codes";
 import sendResponse from "../../utils/sendResponse";
 import catchAsync from "../../utils/catchAsync";
-import { IJwtPayload } from "../auth/auth.interface";
+import { SETTINGS_SECTIONS } from "./settings.constant";
 import { IImageFile } from "../../interface/IImageFile";
+import AppError from "../../errors/appError";
 
 const getSettings = catchAsync(async (_req: Request, res: Response) => {
     const result = await SettingsServices.getSettings();
@@ -17,25 +18,8 @@ const getSettings = catchAsync(async (_req: Request, res: Response) => {
     });
 });
 
-const createSettings = catchAsync(async (req: Request, res: Response) => {
-    const result = await SettingsServices.createSettings(
-        req.body,
-        req.user as IJwtPayload,
-        req.file as IImageFile,
-    );
-
-    sendResponse(res, {
-        statusCode: StatusCodes.CREATED,
-        success: true,
-        message: "Settings created successfully",
-        data: result,
-    });
-});
-
-const updateSettings = catchAsync(async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const result = await SettingsServices.updateSettings(
-        id,
+const updateBrandFields = catchAsync(async (req: Request, res: Response) => {
+    const result = await SettingsServices.updateBrandFields(
         req.body,
         req.file as IImageFile,
     );
@@ -48,40 +32,28 @@ const updateSettings = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
-const updateSettingsSection = catchAsync(async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const sectionKey = req.params.sectionKey as string;
-    const result = await SettingsServices.updateSettingsSection(
-        id,
-        sectionKey,
+const updateSection = catchAsync(async (req: Request, res: Response) => {
+    const { section } = req.params;
+
+    if (!SETTINGS_SECTIONS.includes(section as any)) {
+        throw new AppError(StatusCodes.BAD_REQUEST, "Invalid settings section!");
+    }
+
+    const result = await SettingsServices.updateSection(
+        section as any,
         req.body,
-        req.file as IImageFile,
     );
 
     sendResponse(res, {
         statusCode: StatusCodes.OK,
         success: true,
-        message: "Section updated successfully",
-        data: result,
-    });
-});
-
-const deleteSettings = catchAsync(async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const result = await SettingsServices.deleteSettings(id);
-
-    sendResponse(res, {
-        statusCode: StatusCodes.OK,
-        success: true,
-        message: "Settings deleted successfully",
+        message: `${section} settings updated successfully`,
         data: result,
     });
 });
 
 export const SettingsController = {
     getSettings,
-    createSettings,
-    updateSettings,
-    updateSettingsSection,
-    deleteSettings,
+    updateBrandFields,
+    updateSection,
 };

@@ -17,9 +17,27 @@ const getAllOrders = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getMyOrders = catchAsync(async (req: Request, res: Response) => {
+    const result = await OrderServices.getMyOrders(
+        req.user as IJwtPayload,
+        req.query,
+    );
+
+    sendResponse(res, {
+        statusCode: StatusCodes.OK,
+        success: true,
+        message: "My orders retrieved successfully",
+        meta: result.meta,
+        data: result.result,
+    });
+});
+
 const getOrderDetails = catchAsync(async (req: Request, res: Response) => {
     const { orderId } = req.params;
-    const result = await OrderServices.getOrderDetails(orderId);
+    const result = await OrderServices.getOrderDetails(
+        orderId as string,
+        req.user as IJwtPayload,
+    );
 
     sendResponse(res, {
         statusCode: StatusCodes.OK,
@@ -43,10 +61,29 @@ const createOrder = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const updateOrder = catchAsync(async (req: Request, res: Response) => {
+    const { orderId } = req.params;
+    const result = await OrderServices.updateOrder(
+        orderId as string,
+        req.body,
+        req.user as IJwtPayload,
+    );
+
+    sendResponse(res, {
+        statusCode: StatusCodes.OK,
+        success: true,
+        message: "Order updated successfully",
+        data: result,
+    });
+});
+
 const changeOrderStatus = catchAsync(async (req: Request, res: Response) => {
     const { orderId } = req.params;
     const { status } = req.body;
-    const result = await OrderServices.changeOrderStatus(orderId, status);
+    const result = await OrderServices.changeOrderStatus(
+        orderId as string,
+        status,
+    );
 
     sendResponse(res, {
         statusCode: StatusCodes.OK,
@@ -58,7 +95,9 @@ const changeOrderStatus = catchAsync(async (req: Request, res: Response) => {
 
 export const OrderController = {
     getAllOrders,
+    getMyOrders,
     getOrderDetails,
     createOrder,
+    updateOrder,
     changeOrderStatus,
 };

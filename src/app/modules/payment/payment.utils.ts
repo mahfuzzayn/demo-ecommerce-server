@@ -361,6 +361,7 @@ export const bkashInit = async (data: {
             return {
                 success: true,
                 gatewayUrl: response.data.bkashURL,
+                transactionId: response.data.paymentID || "",
                 message: "bKash payment initiated successfully",
             };
         }

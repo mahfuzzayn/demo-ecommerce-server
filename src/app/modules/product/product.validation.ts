@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Currency } from "../../constants/currency";
 
 const specificationSchema = z.object({
     key: z.string().min(1, "Specification key is required"),
@@ -15,6 +16,7 @@ const createProductValidationSchema = z.object({
             .optional(),
         description: z.string().min(1, "Description is required"),
         price: z.number().min(0, "Price must be a positive number"),
+        currency: z.nativeEnum(Currency).optional().default(Currency.USD),
         stock: z.number().min(0, "Stock must be a non-negative number").default(0),
         weight: z.number().min(0, "Weight must be a positive number"),
         category: z.string().min(1, "Category ID is required"),
@@ -37,6 +39,7 @@ const updateProductValidationSchema = z.object({
             .optional(),
         description: z.string().min(1, "Description is required").optional(),
         price: z.number().min(0, "Price must be a positive number").optional(),
+        currency: z.nativeEnum(Currency).optional(),
         stock: z.number().min(0, "Stock must be a non-negative number").optional(),
         weight: z.number().min(0, "Weight must be a positive number").optional(),
         category: z.string().min(1, "Category ID is required").optional(),

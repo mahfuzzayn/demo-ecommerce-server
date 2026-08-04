@@ -9,7 +9,13 @@ const router = Router();
 
 router.get("/", auth(UserRole.ADMIN), CouponController.getAllCoupons);
 
-router.get("/:couponCode", CouponController.getCouponByCode);
+router.get(
+    "/:couponId",
+    auth(UserRole.ADMIN),
+    CouponController.getSingleCoupon,
+);
+
+router.get("/by-code/:code", CouponController.getCouponByCode);
 
 router.post(
     "/",
@@ -19,7 +25,7 @@ router.post(
 );
 
 router.patch(
-    "/:couponCode/update-coupon",
+    "/:couponId",
     auth(UserRole.ADMIN),
     validateRequest(CouponValidation.updateCouponValidationSchema),
     CouponController.updateCoupon,

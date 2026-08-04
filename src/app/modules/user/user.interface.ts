@@ -16,6 +16,10 @@ export interface IUser extends Document {
     gender?: "Male" | "Female" | "Other";
     dateOfBirth?: Date;
     address?: string;
+    city?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
     photoUrl: string;
     clientInfo: {
         device: "pc" | "mobile"; // Device type

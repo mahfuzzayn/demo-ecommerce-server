@@ -1,4 +1,5 @@
 import { Document, Model, Types } from "mongoose";
+import { Currency } from "../../constants/currency";
 
 // Specification key-value pair
 export interface ISpecification {
@@ -12,6 +13,7 @@ export interface IProduct extends Document {
     slug: string;
     description: string;
     price: number;
+    currency: Currency;
     stock: number;
     weight: number;
     category: Types.ObjectId;

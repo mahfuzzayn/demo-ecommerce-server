@@ -1,4 +1,6 @@
 import { Document, Model, Types } from "mongoose";
+import { PaymentProvider } from "../payment/payment.interface";
+import { Currency } from "../../constants/currency";
 
 // Order status enum
 export enum OrderStatus {
@@ -33,19 +35,24 @@ export interface IOrderProduct {
 export interface IOrder extends Document {
     user: Types.ObjectId;
     products: IOrderProduct[];
-    coupon?: string;
+    coupon?: string | null;
     totalAmount: number;
     discount: number;
     deliveryCharge: number;
     finalAmount: number;
+    currency: Currency;
     status: OrderStatus;
     shippingAddress: string;
     paymentMethod: PaymentMethod;
     paymentStatus: PaymentStatus;
-    sslSessionKey?: string;
-    sslTransactionId?: string;
+    paymentProvider?: PaymentProvider;
+    // Payment tracking fields — raw gateway values (provider known via paymentProvider)
     stripeSessionId?: string;
-    paymentIntentId?: string;
+    sslSessionKey?: string;
+    transactionId?: string;
+    // FX reconciliation — set when a payment is charged in a different currency
+    fxRate?: number;
+    fxBaseCurrency?: string;
     createdAt: Date;
     updatedAt: Date;
 }

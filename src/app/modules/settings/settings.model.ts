@@ -1,47 +1,119 @@
 import mongoose, { Schema } from "mongoose";
 import { ISettings, SettingsModel } from "./settings.interface";
-import AppError from "../../errors/appError";
-import { StatusCodes } from "http-status-codes";
+import { SETTINGS_ID } from "./settings.constant";
 
-const settingsSectionSchema = new Schema(
+const themeSchema = new Schema(
     {
-        key: {
+        primaryColor: {
             type: String,
-            required: true,
+            default: "#000000",
         },
-        title: {
+        secondaryColor: {
+            type: String,
+            default: "#ffffff",
+        },
+        fontFamily: {
             type: String,
             default: "",
+        },
+        logoUrl: {
+            type: String,
+            default: "",
+        },
+    },
+    { _id: false },
+);
+
+const heroSchema = new Schema(
+    {
+        title: {
+            type: String,
+            default: "Welcome",
         },
         subtitle: {
             type: String,
             default: "",
         },
-        description: {
+        backgroundImage: {
             type: String,
             default: "",
         },
-        image: {
+        ctaText: {
             type: String,
             default: "",
         },
-        content: {
-            type: Schema.Types.Mixed,
-            default: {},
-        },
-        isActive: {
-            type: Boolean,
-            default: true,
+        ctaLink: {
+            type: String,
+            default: "",
         },
     },
-    { _id: true },
+    { _id: false },
+);
+
+const navLinkSchema = new Schema(
+    {
+        label: {
+            type: String,
+            required: true,
+        },
+        url: {
+            type: String,
+            required: true,
+        },
+        order: {
+            type: Number,
+            default: 0,
+        },
+    },
+    { _id: false },
+);
+
+const navbarSchema = new Schema(
+    {
+        links: {
+            type: [navLinkSchema],
+            default: [],
+        },
+    },
+    { _id: false },
+);
+
+const footerSchema = new Schema(
+    {
+        links: {
+            type: [navLinkSchema],
+            default: [],
+        },
+        copyrightText: {
+            type: String,
+            default: "",
+        },
+        socialLinks: [
+            {
+                platform: {
+                    type: String,
+                    default: "",
+                },
+                url: {
+                    type: String,
+                    default: "",
+                },
+                _id: false,
+            },
+        ],
+    },
+    { _id: false },
 );
 
 const settingsSchema = new Schema<ISettings, SettingsModel>(
     {
+        _id: {
+            type: String,
+            default: SETTINGS_ID,
+        } as any,
         brandName: {
             type: String,
-            required: true,
+            default: "Demo Shop",
         },
         tagline: {
             type: String,
@@ -59,22 +131,26 @@ const settingsSchema = new Schema<ISettings, SettingsModel>(
             type: String,
             default: "",
         },
-        sections: {
-            type: [settingsSectionSchema],
-            default: [],
+        theme: {
+            type: themeSchema,
+            default: () => ({}),
         },
-        isDeleted: {
-            type: Boolean,
-            default: false,
+        hero: {
+            type: heroSchema,
+            default: () => ({}),
         },
-        createdBy: {
-            type: Schema.Types.ObjectId,
-            ref: "User",
-            required: true,
+        navbar: {
+            type: navbarSchema,
+            default: () => ({}),
+        },
+        footer: {
+            type: footerSchema,
+            default: () => ({}),
         },
     },
     {
         timestamps: true,
+        optimisticConcurrency: true,
         toJSON: {
             transform: (_doc, ret) => {
                 const { __v, ...rest } = ret;
@@ -83,18 +159,6 @@ const settingsSchema = new Schema<ISettings, SettingsModel>(
         },
     },
 );
-
-settingsSchema.statics.checkSettingsExist = async function (
-    settingsId: string,
-) {
-    const existing = await this.findById(settingsId);
-
-    if (!existing) {
-        throw new AppError(StatusCodes.NOT_FOUND, "Settings not found!");
-    }
-
-    return existing;
-};
 
 const Settings = mongoose.model<ISettings, SettingsModel>(
     "Settings",

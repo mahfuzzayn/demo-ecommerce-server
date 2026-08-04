@@ -9,13 +9,30 @@ const router = Router();
 
 router.get("/", auth(UserRole.ADMIN), OrderController.getAllOrders);
 
-router.get("/:orderId", auth(UserRole.ADMIN, UserRole.CUSTOMER), OrderController.getOrderDetails);
+router.get(
+    "/my-orders",
+    auth(UserRole.CUSTOMER),
+    OrderController.getMyOrders,
+);
+
+router.get(
+    "/:orderId",
+    auth(UserRole.ADMIN, UserRole.CUSTOMER),
+    OrderController.getOrderDetails,
+);
 
 router.post(
     "/",
     auth(UserRole.ADMIN, UserRole.CUSTOMER),
     validateRequest(OrderValidation.createOrderValidationSchema),
     OrderController.createOrder,
+);
+
+router.patch(
+    "/:orderId",
+    auth(UserRole.ADMIN, UserRole.CUSTOMER),
+    validateRequest(OrderValidation.updateOrderValidationSchema),
+    OrderController.updateOrder,
 );
 
 router.patch(

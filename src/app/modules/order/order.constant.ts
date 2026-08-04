@@ -5,5 +5,5 @@ export const OrderFilterableFields = [
     "status",
     "paymentMethod",
     "paymentStatus",
-    "userId",
+    "user",
 ];

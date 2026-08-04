@@ -1,38 +1,63 @@
 import { z } from "zod";
+import { SETTINGS_SECTIONS, SettingsSection } from "./settings.constant";
 
-const sectionValidationSchema = z.object({
-    key: z.string().min(1, "Section key is required"),
-    title: z.string().optional(),
+const themeValidationSchema = z.object({
+    primaryColor: z.string().min(1, "Primary color is required"),
+    secondaryColor: z.string().min(1, "Secondary color is required"),
+    fontFamily: z.string().optional(),
+    logoUrl: z.string().optional(),
+});
+
+const heroValidationSchema = z.object({
+    title: z.string().min(1, "Hero title is required"),
     subtitle: z.string().optional(),
-    description: z.string().optional(),
-    image: z.string().optional(),
-    content: z.record(z.unknown()).optional(),
-    isActive: z.boolean().optional(),
+    backgroundImage: z.string().optional(),
+    ctaText: z.string().optional(),
+    ctaLink: z.string().optional(),
 });
 
-const createSettingsValidationSchema = z.object({
-    body: z.object({
-        brandName: z.string().min(1, "Brand name is required"),
-        tagline: z.string().optional(),
-        description: z.string().optional(),
-        logo: z.string().optional(),
-        favicon: z.string().optional(),
-        sections: z.array(sectionValidationSchema).optional(),
-    }),
+const navLinkValidationSchema = z.object({
+    label: z.string().min(1, "Link label is required"),
+    url: z.string().min(1, "Link URL is required"),
+    order: z.number().min(0).optional(),
 });
 
-const updateSettingsValidationSchema = z.object({
+const navbarValidationSchema = z.object({
+    links: z.array(navLinkValidationSchema).default([]),
+});
+
+const footerValidationSchema = z.object({
+    links: z.array(navLinkValidationSchema).default([]),
+    copyrightText: z.string().optional(),
+    socialLinks: z
+        .array(
+            z.object({
+                platform: z.string().min(1, "Platform is required"),
+                url: z.string().min(1, "URL is required"),
+            }),
+        )
+        .optional(),
+});
+
+export const sectionBodySchemas: Record<SettingsSection, z.ZodTypeAny> = {
+    theme: themeValidationSchema,
+    hero: heroValidationSchema,
+    navbar: navbarValidationSchema,
+    footer: footerValidationSchema,
+};
+
+export const updateBrandFieldsValidationSchema = z.object({
     body: z.object({
         brandName: z.string().min(1, "Brand name is required").optional(),
         tagline: z.string().optional(),
         description: z.string().optional(),
         logo: z.string().optional(),
         favicon: z.string().optional(),
-        sections: z.array(sectionValidationSchema).optional(),
     }),
 });
 
 export const SettingsValidation = {
-    createSettingsValidationSchema,
-    updateSettingsValidationSchema,
+    sectionBodySchemas,
+    updateBrandFieldsValidationSchema,
+    SETTINGS_SECTIONS,
 };

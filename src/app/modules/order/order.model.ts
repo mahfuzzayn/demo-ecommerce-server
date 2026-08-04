@@ -6,6 +6,8 @@ import {
     PaymentMethod,
     PaymentStatus,
 } from "./order.interface";
+import { PaymentProvider } from "../payment/payment.interface";
+import { Currency } from "../../constants/currency";
 import AppError from "../../errors/appError";
 import { StatusCodes } from "http-status-codes";
 
@@ -69,6 +71,11 @@ const orderSchema = new Schema<IOrder, OrderModel>(
             required: true,
             min: 0,
         },
+        currency: {
+            type: String,
+            enum: Object.values(Currency),
+            default: Currency.USD,
+        },
         status: {
             type: String,
             enum: Object.values(OrderStatus),
@@ -88,19 +95,28 @@ const orderSchema = new Schema<IOrder, OrderModel>(
             enum: Object.values(PaymentStatus),
             default: PaymentStatus.PENDING,
         },
-        sslSessionKey: {
+        paymentProvider: {
             type: String,
-            default: null,
-        },
-        sslTransactionId: {
-            type: String,
+            enum: Object.values(PaymentProvider),
             default: null,
         },
         stripeSessionId: {
             type: String,
             default: null,
         },
-        paymentIntentId: {
+        sslSessionKey: {
+            type: String,
+            default: null,
+        },
+        transactionId: {
+            type: String,
+            default: null,
+        },
+        fxRate: {
+            type: Number,
+            default: null,
+        },
+        fxBaseCurrency: {
             type: String,
             default: null,
         },

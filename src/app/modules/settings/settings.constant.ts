@@ -1,8 +1,10 @@
-export const SettingsSectionKeys = [
-    "navbar",
+export const SETTINGS_ID = "singleton";
+
+export const SETTINGS_SECTIONS = [
+    "theme",
     "hero",
-    "offer",
-    "testimonials",
-    "ourstory",
+    "navbar",
     "footer",
 ] as const;
+
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];

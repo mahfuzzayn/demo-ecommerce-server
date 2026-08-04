@@ -20,7 +20,7 @@ const getMetaData = async () => {
         { $match: { paymentStatus: "Paid" } },
         { $group: { _id: null, total: { $sum: "$finalAmount" } } },
     ]);
-    const totalRevenue = revenueResult.length > 0 ? revenueResult[0].total : 0;
+    const totalRevenue = revenueResult.length > 0 ? Number((revenueResult[0].total).toFixed(2)) : 0;
 
     // Recent orders in last 7 days
     const sevenDaysAgo = new Date();

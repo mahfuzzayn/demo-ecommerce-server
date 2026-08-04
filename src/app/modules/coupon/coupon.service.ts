@@ -1,7 +1,7 @@
 import { StatusCodes } from "http-status-codes";
 import AppError from "../../errors/appError";
 import QueryBuilder from "../../builder/QueryBuilder";
-import { ICoupon } from "./coupon.interface";
+import { ICoupon, DiscountType } from "./coupon.interface";
 import Coupon from "./coupon.model";
 import { CouponSearchableFields } from "./coupon.constant";
 
@@ -20,6 +20,20 @@ const getAllCoupons = async (query: Record<string, unknown>) => {
     const meta = await couponQuery.countTotal();
 
     return { result, meta };
+};
+
+// Admin single fetch by id — returns expired/inactive coupons too (only hides soft-deleted)
+const getSingleCoupon = async (couponId: string) => {
+    const coupon = await Coupon.findOne({
+        _id: couponId,
+        isDeleted: { $ne: true },
+    });
+
+    if (!coupon) {
+        throw new AppError(StatusCodes.NOT_FOUND, "Coupon not found!");
+    }
+
+    return coupon;
 };
 
 const getCouponByCode = async (couponCode: string) => {
@@ -67,6 +81,16 @@ const createCoupon = async (payload: ICoupon) => {
         );
     }
 
+    if (
+        payload.discountType === DiscountType.PERCENTAGE &&
+        payload.discountValue > 100
+    ) {
+        throw new AppError(
+            StatusCodes.BAD_REQUEST,
+            "Percentage discount cannot exceed 100!",
+        );
+    }
+
     // Ensure code is uppercase
     payload.code = payload.code.toUpperCase();
 
@@ -75,11 +99,11 @@ const createCoupon = async (payload: ICoupon) => {
 };
 
 const updateCoupon = async (
-    couponCode: string,
+    couponId: string,
     payload: Partial<ICoupon>,
 ) => {
     const coupon = await Coupon.findOne({
-        code: { $regex: new RegExp(`^${couponCode}$`, "i") },
+        _id: couponId,
         isDeleted: { $ne: true },
     });
 
@@ -101,8 +125,36 @@ const updateCoupon = async (
         payload.code = payload.code.toUpperCase();
     }
 
-    if (payload.startDate) payload.startDate = new Date(payload.startDate);
-    if (payload.endDate) payload.endDate = new Date(payload.endDate);
+    if (payload.discountValue !== undefined) {
+        const effectiveType = payload.discountType || coupon.discountType;
+        if (
+            effectiveType === DiscountType.PERCENTAGE &&
+            payload.discountValue > 100
+        ) {
+            throw new AppError(
+                StatusCodes.BAD_REQUEST,
+                "Percentage discount cannot exceed 100!",
+            );
+        }
+    }
+
+    // Merge new dates with existing ones to validate the full range
+    const startDate = payload.startDate
+        ? new Date(payload.startDate)
+        : coupon.startDate;
+    const endDate = payload.endDate
+        ? new Date(payload.endDate)
+        : coupon.endDate;
+
+    if (startDate >= endDate) {
+        throw new AppError(
+            StatusCodes.BAD_REQUEST,
+            "End date must be after start date!",
+        );
+    }
+
+    if (payload.startDate) payload.startDate = startDate;
+    if (payload.endDate) payload.endDate = endDate;
 
     const result = await Coupon.findByIdAndUpdate(coupon._id, payload, {
         new: true,
@@ -115,7 +167,6 @@ const deleteCoupon = async (couponId: string) => {
     const coupon = await Coupon.checkCouponExist(couponId);
 
     coupon.isDeleted = true;
-    coupon.isActive = false;
     await coupon.save();
 
     return coupon;
@@ -123,6 +174,7 @@ const deleteCoupon = async (couponId: string) => {
 
 export const CouponServices = {
     getAllCoupons,
+    getSingleCoupon,
     getCouponByCode,
     createCoupon,
     updateCoupon,

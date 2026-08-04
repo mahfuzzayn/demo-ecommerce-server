@@ -1,37 +1,34 @@
 import { z } from "zod";
 
 const stripeInitValidationSchema = z.object({
-    body: z.object({
-        amount: z.number().min(0, "Amount must be a positive number"),
-        currency: z.string().optional().default("usd"),
-    }),
+    body: z.object({}).optional(),
 });
 
 const sslCommerzInitValidationSchema = z.object({
-    body: z.object({
-        total_amount: z.number().min(0),
-        product_name: z.string().min(1, "Product name is required"),
-        product_category: z.string().optional().default("General"),
-        cus_name: z.string().min(1, "Customer name is required"),
-        cus_email: z.string().email("Invalid email"),
-        cus_phone: z.string().min(1, "Phone is required"),
-        cus_add1: z.string().min(1, "Address is required"),
-        cus_city: z.string().min(1, "City is required"),
-        cus_state: z.string().min(1, "State is required"),
-        cus_postcode: z.string().min(1, "Postcode is required"),
-        cus_country: z.string().min(1, "Country is required"),
-        ship_name: z.string().min(1, "Ship name is required"),
-        ship_add1: z.string().min(1, "Ship address is required"),
-        ship_city: z.string().min(1, "Ship city is required"),
-        ship_state: z.string().min(1, "Ship state is required"),
-        ship_postcode: z.union([z.string(), z.number()]),
-        ship_country: z.string().min(1, "Ship country is required"),
-    }),
+    body: z
+        .object({
+            product_name: z.string().optional(),
+            product_category: z.string().optional().default("General"),
+            cus_name: z.string().optional(),
+            cus_email: z.string().email("Invalid email").optional(),
+            cus_phone: z.string().optional(),
+            cus_add1: z.string().optional(),
+            cus_city: z.string().optional(),
+            cus_state: z.string().optional(),
+            cus_postcode: z.string().optional(),
+            cus_country: z.string().optional(),
+            ship_name: z.string().optional(),
+            ship_add1: z.string().optional(),
+            ship_city: z.string().optional(),
+            ship_state: z.string().optional(),
+            ship_postcode: z.union([z.string(), z.number()]).optional(),
+            ship_country: z.string().optional(),
+        })
+        .optional(),
 });
 
 const bkashInitValidationSchema = z.object({
     body: z.object({
-        amount: z.number().min(0, "Amount must be a positive number"),
         customerNumber: z.string().min(1, "Customer number is required"),
     }),
 });

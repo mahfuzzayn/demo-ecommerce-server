@@ -1,5 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 import { IProduct, ProductModel } from "./product.interface";
+import { Currency } from "../../constants/currency";
 import AppError from "../../errors/appError";
 import { StatusCodes } from "http-status-codes";
 
@@ -38,6 +39,11 @@ const productSchema = new Schema<IProduct, ProductModel>(
             type: Number,
             required: true,
             min: 0,
+        },
+        currency: {
+            type: String,
+            enum: Object.values(Currency),
+            default: Currency.USD,
         },
         stock: {
             type: Number,

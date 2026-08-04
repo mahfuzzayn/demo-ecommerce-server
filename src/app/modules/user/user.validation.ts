@@ -46,6 +46,10 @@ const userProfileUpdateSchema = z.object({
                 })
                 .optional(),
             address: z.string().optional(),
+            city: z.string().optional(),
+            state: z.string().optional(),
+            postcode: z.string().optional(),
+            country: z.string().optional(),
             photoUrl: z
                 .string()
                 .regex(

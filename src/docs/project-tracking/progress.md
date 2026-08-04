@@ -1,10 +1,10 @@
 # Created at: 04/08/2026
-# Updated at: 04/08/2026
+# Updated at: 05/08/2026
 # Completed at: N/A
 
 # Modules Testing
 Total Module: 11
-Total Routes: 50
+Total Routes: 54
 
 Base URL: `http://localhost:5000/api/v1` (all routes are prefixed with `/api/v1`)
 
@@ -177,6 +177,8 @@ Authorization: Bearer <admin_token>
 | 5 | `/auth/verify-otp` | POST | Verify OTP from email; returns a reset token on success. |
 | 6 | `/auth/reset-password` | POST | Accept reset token + new password, updates password. |
 
+Auth middleware: valid token with a role not allowed by the route → `401 You are not authorized!`. Invalid/expired/malformed token → `401 Invalid token!` / `Token has expired!`. A valid token is never reported as invalid due to a role mismatch.
+
 ### 2.1 POST /auth/login — Login
 ```text
 POST /api/v1/auth/login
@@ -308,9 +310,9 @@ Note: `newPassword` required, min 6 chars.
 
 | # | Route | Method | Description |
 |---|-------|--------|-------------|
-| 1 | `/product` | GET | Get all non-deleted products (public). Populates category/brand. Supports search, filter, sort, price-range, pagination. |
-| 2 | `/product/:productId` | GET | Get single non-deleted product (public). Populates category/brand. |
-| 3 | `/product` | POST | Create product (Admin). Up to 10 images via Multer/Cloudinary. Slug optional — auto-generated unique; validates category/brand refs. |
+| 1 | `/product` | GET | Get all non-deleted products (public). Populates category/brand + non-flagged reviews. Supports search, filter, sort, price-range, pagination. |
+| 2 | `/product/:productId` | GET | Get single non-deleted product (public). Populates category/brand + non-flagged reviews. |
+| 3 | `/product` | POST | Create product (Admin). Up to 10 images via Multer/Cloudinary. Slug optional — auto-generated unique; validates category/brand refs; attaches `createdBy`. Currency optional (default `usd`). |
 | 4 | `/product/:productId` | PATCH | Update product (Admin). Replaces image array, re-validates slug + refs. Can toggle `isActive` both ways. |
 | 5 | `/product/:productId` | DELETE | Soft-delete product (Admin). Sets `isDeleted: true`, `isActive: false`. Not toggleable. |
 
@@ -333,10 +335,21 @@ GET /api/v1/product?searchTerm=phone&minPrice=100&maxPrice=1000&page=1&limit=10
             "slug": "smartphone-x",
             "description": "Latest smartphone with advanced features",
             "price": 799.99,
+            "currency": "usd",
             "stock": 50,
             "weight": 0.2,
             "category": { "_id": "cat_id", "name": "Electronics", "slug": "electronics" },
             "brand": { "_id": "brand_id", "name": "TechBrand", "logo": "https://..." },
+            "createdBy": "user_id",
+            "reviews": [
+                {
+                    "_id": "review_id_1",
+                    "rating": 4,
+                    "description": "Great product! Highly recommended.",
+                    "isFlagged": false,
+                    "createdAt": "2025-01-15T00:00:00.000Z"
+                }
+            ],
             "imageUrls": ["https://res.cloudinary.com/.../image1.jpg"],
             "isActive": true,
             "averageRating": 4.5,
@@ -366,7 +379,7 @@ GET /api/v1/product/prod_id
     "data": { "...": "same structure as list item above" }
 }
 ```
-Note: 404 if the product does not exist or has been soft-deleted (`isDeleted: true`).
+Note: 404 if the product does not exist or has been soft-deleted (`isDeleted: true`). `reviews` (non-flagged) are populated.
 
 ### 3.3 POST /product — Create Product (Admin)
 ```text
@@ -375,7 +388,7 @@ Authorization: Bearer <admin_token>
 Content-Type: multipart/form-data
 
 Fields:
-  data: { "name": "Smartphone X", "slug": "smartphone-x" (optional), "description": "...", "price": 799.99, "stock": 50, "weight": 0.2, "category": "cat_id", "brand": "brand_id", "specification": [{"key":"RAM","value":"8GB"}], "keyFeatures": ["5G"], "availableColors": ["Black","White"] }
+  data: { "name": "Smartphone X", "slug": "smartphone-x" (optional), "description": "...", "price": 799.99, "currency": "usd" (optional, default "usd"), "stock": 50, "weight": 0.2, "category": "cat_id", "brand": "brand_id", "specification": [{"key":"RAM","value":"8GB"}], "keyFeatures": ["5G"], "availableColors": ["Black","White"] }
   images: [file1, file2, ...] (max 10)
 ```
 ```json
@@ -383,10 +396,10 @@ Fields:
 {
     "success": true,
     "message": "Product created successfully",
-    "data": { "...": "product object with populated category/brand" }
+    "data": { "...": "product object with populated category/brand, createdBy, reviews" }
 }
 ```
-Note: `slug` optional. If omitted, auto-generated from `name` (base slug if free, else `-<random>` suffix). If provided, it must not belong to a different-named product.
+Note: `slug` optional. If omitted, auto-generated from `name` (base slug if free, else `-<random>` suffix). If provided, it must not belong to a different-named product. `createdBy` is attached automatically from the authenticated admin. `currency` supports `usd` (default), `bdt`, `eur`, `gbp`, `inr`, `aed`, `aud`, `cad`.
 
 ### 3.4 PATCH /product/:productId — Update Product (Admin)
 ```text
@@ -429,17 +442,21 @@ Authorization: Bearer <admin_token>
 
 ---
 
-## 4. Order Module
-**Total Routes: 4**
+## 4. Order Module (Completed ✔)
+**Total Routes: 6**
 
 | # | Route | Method | Description |
 |---|-------|--------|-------------|
 | 1 | `/order` | GET | Get all orders (Admin). Populates user + product. Search/filter/sort/paginate. |
-| 2 | `/order/:orderId` | GET | Get order details (Admin or order owner). Full user + product population. |
-| 3 | `/order` | POST | Create order (Admin/Customer). Validates product active + stock; decrements stock. |
-| 4 | `/order/:orderId/status` | PATCH | Change order status (Admin). Locked once Cancelled/Completed. |
+| 2 | `/order/my-orders` | GET | Get the authenticated customer's own orders. Search/filter/sort/paginate. |
+| 3 | `/order/:orderId` | GET | Get order details (Admin or order owner). Full user + product population. |
+| 4 | `/order` | POST | Create order (Admin/Customer). Server-side pricing, coupon verify, stock decrement in a transaction. |
+| 5 | `/order/:orderId` | PATCH | Update order (Admin or owner). Re-validates products/coupon, recomputes totals; locked once Cancelled/Completed. |
+| 6 | `/order/:orderId/status` | PATCH | Change order status (Admin). Locked once Cancelled/Completed. |
 
 Status lifecycle: `Pending` → `Processing` → `Shipped` → `Completed` (or `Cancelled`).
+
+Order currency: inherited from the products at creation (`usd`, `bdt`, `eur`, `gbp`, `inr`, `aed`, `aud`, `cad`). All products in an order must share the same currency, else 400. When a payment is charged in a different currency (e.g. BDT order via Stripe), `fxRate` + `fxBaseCurrency` are stored for reconciliation.
 
 ### 4.1 GET /order — Get All Orders (Admin)
 ```text
@@ -468,10 +485,14 @@ Authorization: Bearer <admin_token>
             "discount": 0,
             "deliveryCharge": 50,
             "finalAmount": 1649.98,
+            "currency": "usd",
             "status": "Pending",
             "shippingAddress": "123 Main Street, Dhaka",
             "paymentMethod": "COD",
             "paymentStatus": "Pending",
+            "paymentProvider": null,
+            "fxRate": null,
+            "fxBaseCurrency": null,
             "createdAt": "2025-01-01T00:00:00.000Z",
             "updatedAt": "2025-01-01T00:00:00.000Z"
         }
@@ -479,7 +500,22 @@ Authorization: Bearer <admin_token>
 }
 ```
 
-### 4.2 GET /order/:orderId — Get Order Details (Admin/Owner)
+### 4.2 GET /order/my-orders — My Orders (Customer)
+```text
+GET /api/v1/order/my-orders?status=Pending&page=1&limit=10
+Authorization: Bearer <customer_token>
+```
+```json
+// Response 200 OK
+{
+    "success": true,
+    "message": "My orders retrieved successfully",
+    "meta": { "page": 1, "limit": 10, "total": 2, "totalPage": 1 },
+    "data": [ { "...": "same structure as list item above" } ]
+}
+```
+
+### 4.3 GET /order/:orderId — Get Order Details (Admin/Owner)
 ```text
 GET /api/v1/order/order_id
 Authorization: Bearer <admin_token or customer_token>
@@ -492,8 +528,9 @@ Authorization: Bearer <admin_token or customer_token>
     "data": { "...": "same structure as list item above" }
 }
 ```
+Note: Only an admin or the user who placed the order can access it.
 
-### 4.3 POST /order — Create Order (Admin/Customer)
+### 4.4 POST /order — Create Order (Admin/Customer)
 ```text
 POST /api/v1/order
 Authorization: Bearer <admin_token or customer_token>
@@ -501,15 +538,12 @@ Content-Type: application/json
 
 {
     "products": [
-        { "product": "prod_id", "quantity": 2, "unitPrice": 799.99 }
+        { "product": "prod_id", "quantity": 2 }
     ],
     "coupon": "SAVE20",
-    "totalAmount": 1599.98,
-    "discount": 0,
     "deliveryCharge": 50,
-    "finalAmount": 1649.98,
     "shippingAddress": "123 Main Street, Dhaka",
-    "paymentMethod": "COD"
+    "paymentMethod": "Online"
 }
 ```
 ```json
@@ -527,21 +561,47 @@ Content-Type: application/json
                 "unitPrice": 799.99
             }
         ],
+        "coupon": null,
         "totalAmount": 1599.98,
         "discount": 0,
         "deliveryCharge": 50,
         "finalAmount": 1649.98,
+        "currency": "usd",
         "status": "Pending",
         "shippingAddress": "123 Main Street, Dhaka",
-        "paymentMethod": "COD",
+        "paymentMethod": "Online",
         "paymentStatus": "Pending",
         "createdAt": "2025-01-01T00:00:00.000Z",
         "updatedAt": "2025-01-01T00:00:00.000Z"
     }
 }
 ```
+Note: `totalAmount`/`discount`/`finalAmount`/`unitPrice` are computed server-side from real product prices — never client-supplied. `coupon` is verified (exists, active, in date range, meets min order). Stock is decremented inside a transaction. `currency` is inherited from the products.
 
-### 4.4 PATCH /order/:orderId/status — Update Order Status (Admin)
+### 4.5 PATCH /order/:orderId — Update Order (Admin/Owner)
+```text
+PATCH /api/v1/order/order_id
+Authorization: Bearer <admin_token or customer_token>
+Content-Type: application/json
+
+{
+    "products": [ { "product": "prod_id", "quantity": 3 } ],
+    "coupon": "SAVE20",
+    "deliveryCharge": 60,
+    "shippingAddress": "456 New Street, Dhaka"
+}
+```
+```json
+// Response 200 OK
+{
+    "success": true,
+    "message": "Order updated successfully",
+    "data": { "...": "updated order with recomputed totals" }
+}
+```
+Note: Same strategy as create — re-validates products + re-prices, restores old stock then decrements new quantities in a transaction, re-verifies coupon, recomputes `finalAmount` and `currency`. Locked once `Completed`/`Cancelled`.
+
+### 4.6 PATCH /order/:orderId/status — Update Order Status (Admin)
 ```text
 PATCH /api/v1/order/order_id/status
 Authorization: Bearer <admin_token>
@@ -566,7 +626,7 @@ Content-Type: application/json
 
 ---
 
-## 5. Meta Module
+## 5. Meta Module (Completed ✔)
 **Total Routes: 1**
 
 | # | Route | Method | Description |
@@ -852,16 +912,19 @@ Authorization: Bearer <admin_token>
 
 ---
 
-## 8. Coupon Module
-**Total Routes: 5**
+## 8. Coupon Module (Completed ✔)
+**Total Routes: 6**
 
 | # | Route | Method | Description |
 |---|-------|--------|-------------|
 | 1 | `/coupon` | POST | Create coupon (Admin). Percentage/fixed discount, min order, max discount, validity dates. |
-| 2 | `/coupon` | GET | Get all coupons (Admin). Paginated. |
-| 3 | `/coupon/:couponCode` | GET | Get coupon by code (public). Validates date range + active status. |
-| 4 | `/coupon/:couponCode/update-coupon` | PATCH | Update coupon (Admin). |
-| 5 | `/coupon/:couponId` | DELETE | Soft-delete coupon (Admin). Sets `isDeleted: true`, `isActive: false`. |
+| 2 | `/coupon` | GET | Get all non-deleted coupons (Admin). Includes expired/inactive. Paginated. |
+| 3 | `/coupon/:couponId` | GET | Get single coupon by id (Admin). Includes expired/inactive; hides soft-deleted. |
+| 4 | `/coupon/by-code/:code` | GET | Get coupon by code (public). Validates date range + active status. |
+| 5 | `/coupon/:couponId` | PATCH | Update coupon by id (Admin). Validates code uniqueness, dates, percentage cap. |
+| 6 | `/coupon/:couponId` | DELETE | Soft-delete coupon (Admin). Sets `isDeleted: true` only. |
+
+Route params are consistent: id-based routes use `:couponId`; the public lookup uses `:code` under `/by-code`.
 
 ### 8.1 POST /coupon — Create Coupon (Admin)
 ```text
@@ -900,6 +963,7 @@ Content-Type: application/json
     }
 }
 ```
+Note: Validates code uniqueness (409), percentage ≤ 100, and `endDate` after `startDate`. Code is stored uppercase.
 
 ### 8.2 GET /coupon — Get All Coupons (Admin)
 ```text
@@ -915,10 +979,12 @@ Authorization: Bearer <admin_token>
     "data": [{ "_id": "coupon_id", "code": "SAVE20", "...": "rest of coupon fields" }]
 }
 ```
+Note: Returns all non-deleted coupons, including expired or inactive ones (admin manages them from here).
 
-### 8.3 GET /coupon/:couponCode — Get Coupon By Code (Public)
+### 8.3 GET /coupon/:couponId — Get Single Coupon (Admin)
 ```text
-GET /api/v1/coupon/SAVE20
+GET /api/v1/coupon/coupon_id
+Authorization: Bearer <admin_token>
 ```
 ```json
 // Response 200 OK
@@ -939,10 +1005,36 @@ GET /api/v1/coupon/SAVE20
     }
 }
 ```
+Note: Admin single fetch — no expiry/active check; 404 only if missing or soft-deleted.
 
-### 8.4 PATCH /coupon/:couponCode/update-coupon — Update Coupon (Admin)
+### 8.4 GET /coupon/by-code/:code — Get Coupon By Code (Public)
 ```text
-PATCH /api/v1/coupon/SAVE20/update-coupon
+GET /api/v1/coupon/by-code/SAVE20
+```
+```json
+// Response 200 OK
+{
+    "success": true,
+    "message": "Coupon retrieved successfully",
+    "data": {
+        "_id": "coupon_id",
+        "code": "SAVE20",
+        "discountType": "percentage",
+        "discountValue": 20,
+        "minOrderAmount": 500,
+        "maxDiscountAmount": 200,
+        "startDate": "2025-01-01T00:00:00.000Z",
+        "endDate": "2025-12-31T00:00:00.000Z",
+        "isActive": true,
+        "isDeleted": false
+    }
+}
+```
+Note: Checkout validation route. 400 if not yet active, expired, or `isActive: false`.
+
+### 8.5 PATCH /coupon/:couponId — Update Coupon (Admin)
+```text
+PATCH /api/v1/coupon/coupon_id
 Authorization: Bearer <admin_token>
 Content-Type: application/json
 
@@ -959,8 +1051,9 @@ Content-Type: application/json
     "data": { "...": "updated coupon object" }
 }
 ```
+Note: Can update code, discount type/value, min/max amounts, dates, `isActive`. Validates: code conflict (409), percentage > 100 (400), `endDate` after `startDate` (400, merged with existing dates).
 
-### 8.5 DELETE /coupon/:couponId — Delete Coupon (Admin)
+### 8.6 DELETE /coupon/:couponId — Delete Coupon (Admin)
 ```text
 DELETE /api/v1/coupon/coupon_id
 Authorization: Bearer <admin_token>
@@ -973,22 +1066,24 @@ Authorization: Bearer <admin_token>
     "data": {
         "_id": "coupon_id",
         "isDeleted": true,
-        "isActive": false,
         "...": "rest of coupon fields"
     }
 }
 ```
+Note: Soft delete only — sets `isDeleted: true` (does not touch `isActive`).
 
 ---
 
 ## 9. Review Module (Completed ✔)
-**Total Routes: 3**
+**Total Routes: 5**
 
 | # | Route | Method | Description |
 |---|-------|--------|-------------|
-| 1 | `/review` | GET | Get all reviews (public). Populates user + product. |
-| 2 | `/review/:reviewId` | GET | Get single review (public). |
-| 3 | `/review` | POST | Create review (Admin/Customer). One review per user per product; syncs product's averageRating + ratingCount. |
+| 1 | `/review` | GET | Get all non-flagged reviews (public). Populates user + product. |
+| 2 | `/review/:reviewId` | GET | Get single non-flagged review (public). |
+| 3 | `/review` | POST | Create review (Customer only). One review per user per product; pushes id to product.reviews; syncs product's averageRating + ratingCount. |
+| 4 | `/review/:reviewId/status` | PATCH | Toggle review `isFlagged` (Admin). Flagged reviews are hidden from public reads and excluded from rating. |
+| 5 | `/review/:reviewId` | DELETE | Delete review (Admin). Hard deletes; removes id from product.reviews; recalcs rating. |
 
 ### 9.1 GET /review — Get All Reviews (Public)
 ```text
@@ -1016,6 +1111,7 @@ GET /api/v1/review?page=1&limit=10
     ]
 }
 ```
+Note: Only `isFlagged: false` reviews are returned publicly.
 
 ### 9.2 GET /review/:reviewId — Get Single Review (Public)
 ```text
@@ -1040,11 +1136,12 @@ GET /api/v1/review/review_id_1
     }
 }
 ```
+Note: 404 if the review does not exist or is flagged.
 
-### 9.3 POST /review — Create Review (Admin/Customer)
+### 9.3 POST /review — Create Review (Customer)
 ```text
 POST /api/v1/review
-Authorization: Bearer <user_token>
+Authorization: Bearer <customer_token>
 Content-Type: application/json
 
 {
@@ -1072,23 +1169,64 @@ Content-Type: application/json
     }
 }
 ```
+Note: Only customers can create reviews. Admin/manager tokens return `You are not authorized!`. Reviewing the same product twice returns 409. Product must exist, not be deleted/inactive. The review id is pushed to the product's `reviews` array.
+
+### 9.4 PATCH /review/:reviewId/status — Toggle Review Flag (Admin)
+```text
+PATCH /api/v1/review/review_id_1/status
+Authorization: Bearer <admin_token>
+```
+```json
+// Response 200 OK
+{
+    "success": true,
+    "message": "Review is now flagged",
+    "data": {
+        "_id": "review_id_1",
+        "isFlagged": true,
+        "...": "rest of review fields"
+    }
+}
+```
+Note: Toggling recalculates the product's `averageRating`/`ratingCount` (flagged reviews excluded).
+
+### 9.5 DELETE /review/:reviewId — Delete Review (Admin)
+```text
+DELETE /api/v1/review/review_id_1
+Authorization: Bearer <admin_token>
+```
+```json
+// Response 200 OK
+{
+    "success": true,
+    "message": "Review deleted successfully",
+    "data": {
+        "_id": "review_id_1",
+        "rating": 4,
+        "...": "rest of review fields"
+    }
+}
+```
+Note: Hard delete; removes the id from the product's `reviews` array and recalcs the product rating.
 
 ---
 
-## 10. Payment Module
+## 10. Payment Module (Completed ✔)
 **Total Routes: 7**
 
 Providers: Stripe (international), SSLCommerz (Bangladesh), bKash (Bangladesh mobile banking).
 
+Amounts are always taken from the order's `finalAmount` — never client-supplied. A paid order (`paymentStatus: "Paid"`) cannot be re-initialized (400). On successful payment, `paymentProvider` (`stripe`/`sslcommerz`/`bkash`) is set on the order.
+
 | # | Route | Method | Description |
 |---|-------|--------|-------------|
-| 1 | `/payment/:orderId/stripe/init` | POST | Initiate Stripe payment (Admin/Customer). Returns `paymentIntentId` + `clientSecret`. |
-| 2 | `/payment/stripe/success` | GET/POST | Stripe success callback (`router.all`). Validates PaymentIntent, marks order Paid/Processing. |
-| 3 | `/payment/stripe/cancel` | GET/POST | Stripe cancel callback (`router.all`). Validates PaymentIntent status. |
-| 4 | `/payment/:orderId/sslcommerz/init` | POST | Initiate SSLCommerz payment (Admin/Customer). Returns gateway URL + session key. |
-| 5 | `/payment/sslcommerz/validate` | GET/POST | SSLCommerz validate callback (`router.all`). Uses `val_id`; updates order on success. |
-| 6 | `/payment/:orderId/bkash/init` | POST | Initiate bKash payment (Admin/Customer). Tokenized checkout; returns gateway URL. |
-| 7 | `/payment/bkash/validate` | POST | Validate bKash payment (Admin/Customer). Uses `paymentID`; executes payment. |
+| 1 | `/payment/:orderId/stripe/init` | POST | Initiate Stripe (Admin/Customer). Body optional. Uses order currency if Stripe-supported; else converts to USD via FX and stores `fxRate`/`fxBaseCurrency`. |
+| 2 | `/payment/stripe/success` | GET/POST | Stripe success callback (`router.all`). Validates session, marks order Paid/Processing, sets `paymentProvider`. |
+| 3 | `/payment/stripe/cancel` | GET/POST | Stripe cancel callback (`router.all`). |
+| 4 | `/payment/:orderId/sslcommerz/init` | POST | Initiate SSLCommerz (Admin/Customer). Auto-fills customer/shipping fields from the order user's profile; body optional. Amount from `finalAmount`, currency BDT. |
+| 5 | `/payment/sslcommerz/validate` | GET/POST | SSLCommerz validate callback (`router.all`). Uses `val_id`; matches order by stored `transactionId`; updates on success. |
+| 6 | `/payment/:orderId/bkash/init` | POST | Initiate bKash (Admin/Customer). Body: `customerNumber`. Amount from `finalAmount`. Stores bKash `paymentID` on the order. |
+| 7 | `/payment/bkash/validate` | POST | Validate bKash (Admin/Customer). Uses `paymentID`; matches order by stored `transactionId`. |
 
 ### 10.1 POST /payment/:orderId/stripe/init — Initiate Stripe (Admin/Customer)
 ```text
@@ -1096,10 +1234,8 @@ POST /api/v1/payment/order_id_123/stripe/init
 Authorization: Bearer <token>
 Content-Type: application/json
 
-{
-    "amount": 1500,
-    "currency": "usd"
-}
+// body is optional — amount + currency are derived from the order
+{}
 ```
 ```json
 // Response 200 OK
@@ -1108,17 +1244,18 @@ Content-Type: application/json
     "message": "Stripe payment initiated successfully",
     "data": {
         "success": true,
-        "paymentIntentId": "pi_3Rabc123...",
-        "clientSecret": "pi_3Rabc123_secret_xyz...",
+        "gatewayUrl": "https://checkout.stripe.com/...",
+        "sessionId": "cs_test_abc123...",
         "message": "Stripe payment initiated successfully"
     }
 }
 ```
+Note: If the order's currency is not Stripe-supported (e.g. `bdt`), the amount is converted to USD via a live FX API and `fxRate` + `fxBaseCurrency` are recorded on the order.
 
 ### 10.2 GET|POST /payment/stripe/success — Stripe Success Callback
 ```text
-GET /api/v1/payment/stripe/success?payment_intent=pi_3Rabc123...   // or POST with body
-// GET /api/v1/payment/stripe/success  → browser redirect after Checkout
+GET /api/v1/payment/stripe/success?session_id=cs_test_abc123...
+// or POST with body { "sessionId": "cs_test_abc123..." }
 ```
 ```json
 // Response 200 OK
@@ -1127,7 +1264,7 @@ GET /api/v1/payment/stripe/success?payment_intent=pi_3Rabc123...   // or POST wi
     "message": "Payment validated successfully",
     "data": {
         "success": true,
-        "transactionId": "pi_3Rabc123...",
+        "transactionId": "cs_test_abc123...",
         "status": "success",
         "message": "Payment validated successfully"
     }
@@ -1136,18 +1273,17 @@ GET /api/v1/payment/stripe/success?payment_intent=pi_3Rabc123...   // or POST wi
 
 ### 10.3 GET|POST /payment/stripe/cancel — Stripe Cancel Callback
 ```text
-GET /api/v1/payment/stripe/cancel?payment_intent=pi_3Rabc123...
+GET /api/v1/payment/stripe/cancel?session_id=cs_test_abc123...
 ```
 ```json
 // Response 200 OK
 {
     "success": true,
-    "message": "Payment validated successfully",
+    "message": "Payment validation failed",
     "data": {
-        "success": true,
-        "transactionId": "pi_3Rabc123...",
-        "status": "success",
-        "message": "Payment validated successfully"
+        "success": false,
+        "status": "cancelled",
+        "message": "Payment validation failed"
     }
 }
 ```
@@ -1158,25 +1294,8 @@ POST /api/v1/payment/order_id_123/sslcommerz/init
 Authorization: Bearer <token>
 Content-Type: application/json
 
-{
-    "total_amount": 1500,
-    "product_name": "E-commerce Order",
-    "product_category": "General",
-    "cus_name": "John Doe",
-    "cus_email": "customer@example.com",
-    "cus_phone": "01712345678",
-    "cus_add1": "123 Main Street",
-    "cus_city": "Dhaka",
-    "cus_state": "Dhaka",
-    "cus_postcode": "1200",
-    "cus_country": "Bangladesh",
-    "ship_name": "John Doe",
-    "ship_add1": "123 Main Street",
-    "ship_city": "Dhaka",
-    "ship_state": "Dhaka",
-    "ship_postcode": "1200",
-    "ship_country": "Bangladesh"
-}
+// body is optional — customer/shipping fields auto-filled from the order user's profile
+{}
 ```
 ```json
 // Response 200 OK
@@ -1191,6 +1310,7 @@ Content-Type: application/json
     }
 }
 ```
+Note: `cus_*`/`ship_*` fields are auto-filled from the user's profile (`name`, `email`, `phoneNo`, `address`, `city`, `state`, `postcode`, `country`) with Dhaka/BD defaults. Any field can be overridden via body. Amount from `finalAmount`, currency BDT.
 
 ### 10.5 GET|POST /payment/sslcommerz/validate — SSLCommerz Validate Callback
 ```text
@@ -1199,7 +1319,8 @@ POST /api/v1/payment/sslcommerz/validate
 Content-Type: application/json
 
 {
-    "val_id": "val_id_from_callback"
+    "val_id": "val_id_from_callback",
+    "tran_id": "ORDER-abc-1234567890"
 }
 ```
 ```json
@@ -1223,7 +1344,6 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-    "amount": 1500,
     "customerNumber": "01712345678"
 }
 ```
@@ -1239,6 +1359,7 @@ Content-Type: application/json
     }
 }
 ```
+Note: Amount from `finalAmount`. The bKash `paymentID` is stored on the order as `transactionId` for callback matching.
 
 ### 10.7 POST /payment/bkash/validate — Validate bKash (Admin/Customer)
 ```text
@@ -1263,19 +1384,20 @@ Content-Type: application/json
     }
 }
 ```
+Note: Matches the order by the stored `transactionId` (raw `paymentID`, no prefix).
 
 ---
 
-## 11. Settings Module
-**Total Routes: 5**
+## 11. Settings Module (Completed ✔)
+**Total Routes: 3**
 
 | # | Route | Method | Description |
 |---|-------|--------|-------------|
-| 1 | `/settings` | GET | Get settings (public). Returns latest non-deleted settings doc. |
-| 2 | `/settings` | POST | Create settings (Admin). Brand name required; tagline, description, logo upload, favicon, sections array. |
-| 3 | `/settings/:id` | PATCH | Update settings (Admin). Logo upload supported. |
-| 4 | `/settings/:id/section/:sectionKey` | PATCH | Update a single section by its key (Admin). Image upload supported. |
-| 5 | `/settings/:id` | DELETE | Soft-delete settings (Admin). Sets `isDeleted: true`. |
+| 1 | `/settings` | GET | Get settings (public). Returns the singleton settings doc, cached in memory. |
+| 2 | `/settings` | PATCH | Update brand fields (Admin). `brandName`, `tagline`, `description`, `logo` (upload), `favicon`. |
+| 3 | `/settings/:section` | PATCH | Update one section (Admin). `theme`, `hero`, `navbar`, or `footer`. Invalid section → 400. |
+
+The Settings module is a **single singleton document** (`_id: "singleton"`), created by the seed script (`npm run seed:settings`). Each section is a typed sub-schema (`theme`, `hero`, `navbar`, `footer`). Writes invalidate the in-memory cache. Settings holds site-wide config only — no content collections (products, posts, banners) belong here.
 
 ### 11.1 GET /settings — Get Settings (Public)
 ```text
@@ -1287,74 +1409,48 @@ GET /api/v1/settings
     "success": true,
     "message": "Settings retrieved successfully",
     "data": {
-        "_id": "settings_id",
+        "_id": "singleton",
         "brandName": "Demo Shop",
         "tagline": "Your one-stop shop",
         "description": "Best products at best prices",
         "logo": "https://res.cloudinary.com/.../logo.png",
         "favicon": "https://res.cloudinary.com/.../favicon.ico",
-        "sections": [
-            {
-                "_id": "section_id",
-                "key": "hero",
-                "title": "Welcome",
-                "subtitle": "Summer Sale",
-                "description": "Up to 50% off",
-                "image": "https://res.cloudinary.com/.../hero.jpg",
-                "content": {},
-                "isActive": true
-            }
-        ],
-        "isDeleted": false,
-        "createdBy": "user_id",
+        "theme": {
+            "primaryColor": "#000000",
+            "secondaryColor": "#ffffff",
+            "fontFamily": "",
+            "logoUrl": ""
+        },
+        "hero": {
+            "title": "Welcome",
+            "subtitle": "",
+            "backgroundImage": "",
+            "ctaText": "",
+            "ctaLink": ""
+        },
+        "navbar": {
+            "links": []
+        },
+        "footer": {
+            "links": [],
+            "copyrightText": "",
+            "socialLinks": []
+        },
         "createdAt": "2025-01-01T00:00:00.000Z",
         "updatedAt": "2025-01-01T00:00:00.000Z"
     }
 }
 ```
+Note: Cached in memory; second read is served from cache until a write invalidates it. Returns 404 with "run the settings seed script" if not seeded.
 
-### 11.2 POST /settings — Create Settings (Admin)
+### 11.2 PATCH /settings — Update Brand Fields (Admin)
 ```text
-POST /api/v1/settings
+PATCH /api/v1/settings
 Authorization: Bearer <admin_token>
 Content-Type: multipart/form-data
 
 Fields:
-  data: {
-      "brandName": "Demo Shop",
-      "tagline": "Your one-stop shop",
-      "description": "Best products at best prices",
-      "favicon": "https://.../favicon.ico",
-      "sections": [
-          {
-              "key": "hero",
-              "title": "Welcome",
-              "subtitle": "Summer Sale",
-              "description": "Up to 50% off",
-              "content": { "buttonText": "Shop Now" },
-              "isActive": true
-          }
-      ]
-  }
-  logo: [file upload]
-```
-```json
-// Response 201 Created
-{
-    "success": true,
-    "message": "Settings created successfully",
-    "data": { "...": "settings object as in GET response" }
-}
-```
-
-### 11.3 PATCH /settings/:id — Update Settings (Admin)
-```text
-PATCH /api/v1/settings/settings_id
-Authorization: Bearer <admin_token>
-Content-Type: multipart/form-data
-
-Fields:
-  data: { "brandName": "Demo Shop Pro", "tagline": "New tagline" }
+  data: { "brandName": "Demo Shop Pro", "tagline": "New tagline", "description": "...", "favicon": "..." }
   logo: [optional file upload]
 ```
 ```json
@@ -1366,51 +1462,29 @@ Fields:
 }
 ```
 
-### 11.4 PATCH /settings/:id/section/:sectionKey — Update Settings Section (Admin)
+### 11.3 PATCH /settings/:section — Update Settings Section (Admin)
 ```text
-PATCH /api/v1/settings/settings_id/section/hero
+PATCH /api/v1/settings/hero
 Authorization: Bearer <admin_token>
-Content-Type: multipart/form-data
+Content-Type: application/json
 
-Fields:
-  data: { "title": "New Hero Title", "isActive": true }
-  image: [optional file upload]
+{
+    "title": "New Hero Title",
+    "subtitle": "Summer Sale",
+    "backgroundImage": "https://.../hero.jpg",
+    "ctaText": "Shop Now",
+    "ctaLink": "/shop"
+}
 ```
 ```json
 // Response 200 OK
 {
     "success": true,
-    "message": "Section updated successfully",
-    "data": {
-        "_id": "section_id",
-        "key": "hero",
-        "title": "New Hero Title",
-        "subtitle": "Summer Sale",
-        "description": "Up to 50% off",
-        "image": "https://res.cloudinary.com/.../hero.jpg",
-        "content": { "buttonText": "Shop Now" },
-        "isActive": true
-    }
+    "message": "hero settings updated successfully",
+    "data": { "...": "updated settings object (full document)" }
 }
 ```
-
-### 11.5 DELETE /settings/:id — Delete Settings (Admin)
-```text
-DELETE /api/v1/settings/settings_id
-Authorization: Bearer <admin_token>
-```
-```json
-// Response 200 OK
-{
-    "success": true,
-    "message": "Settings deleted successfully",
-    "data": {
-        "_id": "settings_id",
-        "isDeleted": true,
-        "...": "rest of settings fields"
-    }
-}
-```
+Note: Valid sections are `theme`, `hero`, `navbar`, `footer`. Each has its own body schema; unknown section → 400, invalid body → 400. Writes invalidate the cache.
 
 ---
 
@@ -1421,15 +1495,15 @@ Authorization: Bearer <admin_token>
 | User | 5 |
 | Auth | 6 |
 | Product | 5 |
-| Order | 4 |
+| Order | 6 |
 | Meta | 1 |
-| Brand | 4 |
-| Category | 4 |
-| Coupon | 5 |
-| Review | 3 |
+| Brand | 5 |
+| Category | 5 |
+| Coupon | 6 |
+| Review | 5 |
 | Payment | 7 |
-| Settings | 5 |
-| **Total** | **49** |
+| Settings | 3 |
+| **Total** | **54** |
 
 ---
 
@@ -1437,6 +1511,6 @@ Authorization: Bearer <admin_token>
 
 1. **Payment readme mismatch**: `payment.readme.md` documents a `/stripe/validate` route, but the actual route file uses `/stripe/success` and `/stripe/cancel` (both `router.all`). The readme should be updated to match the code.
 2. **Stripe validate requires auth in code?** — `/stripe/success` and `/stripe/cancel` have no `auth` middleware (they are provider/browser callbacks), while `/bkash/validate` and both init routes do require auth. Worth confirming during QA whether bKash validate should be public for callback compatibility.
-3. **Settings module has no readme** — consider adding `settings.readme.md` for parity with other modules.
-4. **Open question (later work)**: Keep Settings as a generic key/value-section store, or split into specific sub-documents (theme, hero section, home page section, navbar, footer, etc.)?
+3. **Resolved**: Settings readme added (`src/app/modules/settings/settings.readme.md`).
+4. **Resolved**: Settings is now a singleton document with typed sub-schemas (`theme`, `hero`, `navbar`, `footer`) — see §11.
 5. When using multer it uploads image first then does validation of creating a product/brand/category or not, and it denies but the photo still is uploaded and on the cloud.

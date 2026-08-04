@@ -41,6 +41,22 @@ const userSchema = new Schema<IUser, UserModel>(
             type: String,
             trim: true,
         },
+        city: {
+            type: String,
+            trim: true,
+        },
+        state: {
+            type: String,
+            trim: true,
+        },
+        postcode: {
+            type: String,
+            trim: true,
+        },
+        country: {
+            type: String,
+            trim: true,
+        },
         photoUrl: {
             type: String,
             required: false,

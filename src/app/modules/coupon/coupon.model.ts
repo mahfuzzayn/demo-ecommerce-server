@@ -76,7 +76,10 @@ couponSchema.pre("findOne", function (next) {
 });
 
 couponSchema.statics.checkCouponExist = async function (couponId: string) {
-    const existingCoupon = await this.findById(couponId);
+    const existingCoupon = await this.findOne({
+        _id: couponId,
+        isDeleted: { $ne: true },
+    });
 
     if (!existingCoupon) {
         throw new AppError(StatusCodes.NOT_FOUND, "Coupon does not exist!");

@@ -1,95 +1,89 @@
 import { StatusCodes } from "http-status-codes";
 import AppError from "../../errors/appError";
-import { ISettings, ISettingsSection } from "./settings.interface";
 import Settings from "./settings.model";
-import { IJwtPayload } from "../auth/auth.interface";
+import { ISettings } from "./settings.interface";
+import { SETTINGS_ID } from "./settings.constant";
+import { settingsCache } from "./settings.cache";
 import { IImageFile } from "../../interface/IImageFile";
 
-const getSettings = async () => {
-    const settings = await Settings.findOne({ isDeleted: false }).sort({
-        createdAt: -1,
-    });
-    return settings;
-};
+const getSettings = async (): Promise<ISettings> => {
+    const cached = settingsCache.get();
+    if (cached) return cached;
 
-const createSettings = async (
-    payload: Partial<ISettings>,
-    authUser: IJwtPayload,
-    file?: IImageFile,
-) => {
-    payload.createdBy = authUser.userId as any;
+    const settings = await Settings.findById(SETTINGS_ID);
 
-    if (file?.path) {
-        payload.logo = file.path;
+    if (!settings) {
+        throw new AppError(
+            StatusCodes.NOT_FOUND,
+            "Settings not seeded. Run the settings seed script.",
+        );
     }
 
-    const settings = await Settings.create(payload);
-    return settings;
+    const data = settings.toObject();
+    settingsCache.set(data as ISettings);
+
+    return data as ISettings;
 };
 
-const updateSettings = async (
-    settingsId: string,
-    payload: Partial<ISettings>,
-    file?: IImageFile,
+const updateSection = async <K extends keyof ISettings>(
+    section: K,
+    data: Partial<ISettings[K]>,
 ) => {
-    await Settings.checkSettingsExist(settingsId);
-
-    if (file?.path) {
-        payload.logo = file.path;
-    }
-
-    const result = await Settings.findByIdAndUpdate(settingsId, payload, {
-        new: true,
-    });
-
-    return result;
-};
-
-const updateSettingsSection = async (
-    settingsId: string,
-    sectionKey: string,
-    payload: Partial<ISettingsSection>,
-    file?: IImageFile,
-) => {
-    const settings = await Settings.checkSettingsExist(settingsId);
-
-    const sectionIndex = settings.sections.findIndex(
-        (section) => section.key === sectionKey,
+    const updated = await Settings.findByIdAndUpdate(
+        SETTINGS_ID,
+        { $set: { [section]: data } },
+        { new: true, runValidators: true },
     );
 
-    if (sectionIndex === -1) {
-        throw new AppError(StatusCodes.NOT_FOUND, "Section not found!");
+    if (!updated) {
+        throw new AppError(
+            StatusCodes.NOT_FOUND,
+            "Settings not seeded. Run the settings seed script.",
+        );
     }
 
-    const section = settings.sections[sectionIndex];
+    settingsCache.invalidate();
 
-    if (file?.path) {
-        payload.image = file.path;
-    }
-
-    settings.sections[sectionIndex] = {
-        ...section,
-        ...payload,
-    };
-
-    await settings.save();
-
-    return settings.sections[sectionIndex];
+    return updated.toObject();
 };
 
-const deleteSettings = async (settingsId: string) => {
-    const settings = await Settings.checkSettingsExist(settingsId);
+const updateBrandFields = async (
+    payload: Partial<ISettings>,
+    file?: IImageFile,
+) => {
+    const update: Partial<ISettings> = {};
 
-    settings.isDeleted = true;
-    await settings.save();
+    if (payload.brandName !== undefined) update.brandName = payload.brandName;
+    if (payload.tagline !== undefined) update.tagline = payload.tagline;
+    if (payload.description !== undefined)
+        update.description = payload.description;
+    if (payload.logo !== undefined) update.logo = payload.logo;
+    if (payload.favicon !== undefined) update.favicon = payload.favicon;
 
-    return settings;
+    if (file?.path) {
+        update.logo = file.path;
+    }
+
+    const updated = await Settings.findByIdAndUpdate(
+        SETTINGS_ID,
+        { $set: update },
+        { new: true, runValidators: true },
+    );
+
+    if (!updated) {
+        throw new AppError(
+            StatusCodes.NOT_FOUND,
+            "Settings not seeded. Run the settings seed script.",
+        );
+    }
+
+    settingsCache.invalidate();
+
+    return updated.toObject();
 };
 
 export const SettingsServices = {
     getSettings,
-    createSettings,
-    updateSettings,
-    updateSettingsSection,
-    deleteSettings,
+    updateSection,
+    updateBrandFields,
 };
