@@ -49,7 +49,6 @@ router.patch(
 router.patch(
     "/:section",
     auth(UserRole.ADMIN),
-    parseBody,
     validateSectionRequest,
     SettingsController.updateSection,
 );

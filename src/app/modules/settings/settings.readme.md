@@ -139,3 +139,35 @@ This creates the singleton document if it does not exist; if it already exists i
 - `GET /settings` is **public**; all writes (`PATCH /`, `PATCH /:section`) require the `admin` role via the `auth` middleware.
 - The in-memory cache is invalidated on every write. For multi-instance deployments, swap `settings.cache.ts` for Redis (or add a TTL).
 - Sections are typed sub-schemas (`{ _id: false }`) — no generic `content` blob. Adding a new config area means adding a new typed sub-schema + a `SETTINGS_SECTIONS` entry.
+
+
+
+
+
+#### How Settings Cache Works (Simple Flow) (Added for Context Understanding)
+
+1. **First request (GET /settings)**:
+   - Cache is empty (`cachedSettings = null`)
+   - Server calls the database → `Settings.findById(SETTINGS_ID)`
+   - Stores the result in memory (RAM) via `settingsCache.set(data)`
+   - Sends the data to the user
+
+2. **Next requests**:
+   - Cache is not empty → server sends the in-memory data directly
+   - No database call at all ✅ (faster response)
+
+3. **When settings are updated (PATCH /settings)**:
+   - Server updates the database
+   - Calls `settingsCache.invalidate()` → clears the cache (back to null)
+   - Next GET request will re-read from the database and re-fill the cache
+
+#### Will It Work on Vercel Production?
+
+- **Yes, it works — but with a catch.**
+- Vercel runs serverless functions. Each instance has its **own separate memory (RAM)**.
+- So the cache is **per-instance, not shared**:
+  - Instance A has the cache → returns fast, no DB call
+  - Instance B (fresh) has no cache → calls the database
+  - Instances are also killed/recycled often → cache resets
+- **Bottom line**: It's a *best-effort* in-memory cache. It reduces DB calls for settings but does NOT guarantee all users get the cached data.
+- Since settings is a **single document read often + updated rarely**, this is fine for this project. If the app grows to multiple instances and you want a shared cache, switch to **Redis** (as noted in `settings.cache.ts`).

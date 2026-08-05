@@ -1388,7 +1388,7 @@ Note: Matches the order by the stored `transactionId` (raw `paymentID`, no prefi
 
 ---
 
-## 11. Settings Module (Completed ✔)
+## 11. Settings Module
 **Total Routes: 3**
 
 | # | Route | Method | Description |
