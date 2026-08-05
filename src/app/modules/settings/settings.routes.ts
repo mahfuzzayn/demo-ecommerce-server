@@ -40,15 +40,26 @@ router.get("/", SettingsController.getSettings);
 router.patch(
     "/",
     auth(UserRole.ADMIN),
-    multerUpload.single("logo"),
+    multerUpload.fields([
+        { name: "logo", maxCount: 1 },
+        { name: "favicon", maxCount: 1 },
+    ]),
     parseBody,
     validateRequest(SettingsValidation.updateBrandFieldsValidationSchema),
     SettingsController.updateBrandFields,
 );
 
 router.patch(
+    "/preset/:niche",
+    auth(UserRole.ADMIN),
+    SettingsController.applyNichePreset,
+);
+
+router.patch(
     "/:section",
     auth(UserRole.ADMIN),
+    multerUpload.array("images", 20),
+    parseBody,
     validateSectionRequest,
     SettingsController.updateSection,
 );

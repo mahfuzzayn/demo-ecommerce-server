@@ -1,4 +1,4 @@
-import jwt, { JwtPayload, Secret } from "jsonwebtoken";
+import jwt, { JwtPayload, Secret, SignOptions } from "jsonwebtoken";
 import { IJwtPayload } from "./auth.interface";
 
 export const createToken = (
@@ -8,7 +8,7 @@ export const createToken = (
 ) => {
     return jwt.sign(jwtPayload, secret, {
         expiresIn,
-    });
+    } as SignOptions);
 };
 
 export const verifyToken = (token: string, secret: Secret) => {

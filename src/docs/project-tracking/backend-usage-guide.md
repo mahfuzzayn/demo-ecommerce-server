@@ -19,8 +19,9 @@ This guide explains how to connect a frontend application to the Demo eCommerce 
 - [12. Coupon Module](#12-coupon-module)
 - [13. Category Module](#13-category-module)
 - [14. Review Module](#14-review-module)
-- [15. Payment Flow Walkthroughs](#15-payment-flow-walkthroughs)
-- [16. Frontend Integration Notes](#16-frontend-integration-notes)
+- [15. Settings Module](#15-settings-module)
+- [16. Payment Flow Walkthroughs](#16-payment-flow-walkthroughs)
+- [17. Frontend Integration Notes](#17-frontend-integration-notes)
 
 ---
 
@@ -546,11 +547,11 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/product`
 
-Product model fields: `name`, `slug` (auto-generated), `description`, `price`, `stock`, `weight`, `category` (ObjectId → Category), `imageUrls[]`, `isActive`, `brand` (ObjectId → Brand), `averageRating`, `ratingCount`, `availableColors[]`, `specification[]` (`{key, value}`), `keyFeatures[]`, timestamps.
+Product model fields: `name`, `slug` (auto-generated), `description`, `price`, `currency` (`usd` default, `bdt`, `eur`, `gbp`, `inr`, `aed`, `aud`, `cad`), `stock`, `weight`, `category` (ObjectId → Category), `brand` (ObjectId → Brand), `createdBy` (ObjectId → User, attached automatically), `imageUrls[]`, `isActive`, `isDeleted`, `averageRating`, `ratingCount`, `availableColors[]`, `specification[]` (`{key, value}`), `keyFeatures[]`, timestamps.
 
 ### 7.1 GET /api/v1/product — Get all products
 
-Public. Returns **active only** (`isActive: true`). Category (`name`, `slug`) and brand (`name`, `logo`) are populated.
+Public. Returns **non-deleted only** (`isDeleted: false`). Category (`name`, `slug`), brand (`name`, `logo`), and non-flagged reviews (`rating`, `description`, `isFlagged`, `createdAt`) are populated.
 
 **Query params:** `searchTerm` (searches `name`, `description`), `page`, `limit`, `sort`, `fields`, plus filters:
 - `category` — category ObjectId
@@ -577,10 +578,21 @@ GET /api/v1/product?searchTerm=phone&minPrice=100&maxPrice=1000&page=1&limit=10
       "slug": "smartphone-x",
       "description": "Latest smartphone with advanced features",
       "price": 799.99,
+      "currency": "usd",
       "stock": 50,
       "weight": 0.2,
       "category": { "_id": "665a...", "name": "Electronics", "slug": "electronics" },
       "brand": { "_id": "665b...", "name": "TechBrand", "logo": "https://..." },
+      "createdBy": "664f1a2b3c4d5e6f7a8b9c0d",
+      "reviews": [
+        {
+          "_id": "667d1a2b...",
+          "rating": 4,
+          "description": "Great product! Highly recommended.",
+          "isFlagged": false,
+          "createdAt": "2026-07-20T10:00:00.000Z"
+        }
+      ],
       "imageUrls": ["https://res.cloudinary.com/.../image1.jpg"],
       "isActive": true,
       "averageRating": 4.5,
@@ -616,11 +628,11 @@ GET /api/v1/product/664f1a2b3c4d5e6f7a8b9c0d
 }
 ```
 
-**Errors:** 404 "Product not found!" / 400 "Product is not available!"
+**Errors:** 404 "Product not found!" (missing or soft-deleted)
 
 ### 7.3 POST /api/v1/product — Create product
 
-Protected — `admin`. **Multipart form-data.** The JSON payload goes in a `data` field; up to **10 images** upload via the `images` field. The slug is auto-generated from `name`.
+Protected — `admin`. **Multipart form-data.** The JSON payload goes in a `data` field; up to **10 images** upload via the `images` field. The slug is auto-generated from `name` if not provided.
 
 **Request:**
 ```
@@ -629,11 +641,11 @@ Authorization: Bearer <adminAccessToken>
 Content-Type: multipart/form-data
 
 Form fields:
-  data: {"name":"Smartphone X","description":"Latest smartphone","price":799.99,"stock":50,"weight":0.2,"category":"<categoryId>","brand":"<brandId>","availableColors":["Black","White"],"specification":[{"key":"RAM","value":"8GB"}],"keyFeatures":["5G Support"]}
+  data: {"name":"Smartphone X","description":"Latest smartphone","price":799.99,"currency":"usd","stock":50,"weight":0.2,"category":"<categoryId>","brand":"<brandId>","availableColors":["Black","White"],"specification":[{"key":"RAM","value":"8GB"}],"keyFeatures":["5G Support"]}
   images: <file1> <file2> ... (max 10)
 ```
 
-Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `brand`. Optional: `stock` (default 0), `imageUrls`, `isActive` (default true), `availableColors`, `specification`, `keyFeatures`.
+Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `brand`. Optional: `slug`, `currency` (default `usd`), `stock` (default 0), `imageUrls`, `isActive` (default true), `availableColors`, `specification`, `keyFeatures`. `createdBy` is attached automatically from the authenticated admin.
 
 **Response (201):**
 ```json
@@ -644,11 +656,11 @@ Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `b
 }
 ```
 
-**Errors:** 409 "A product with a similar name already exists!" (non-unique slug), 404 for invalid category/brand, 400 for invalid data.
+**Errors:** 409 "A product with this slug already exists!" (slug owned by a different-named product), 404 for invalid category/brand, 400 for invalid data.
 
 ### 7.4 PATCH /api/v1/product/:productId — Update product
 
-Protected — `admin`. **Multipart form-data** with `data` + `images` fields, same as create. Any subset of fields can be sent. If new `images` are uploaded they **replace** the existing `imageUrls`.
+Protected — `admin`. **Multipart form-data** with `data` + `images` fields, same as create. Any subset of fields can be sent. If new `images` are uploaded they **replace** the existing `imageUrls`. `isActive` can be toggled `true`/`false` freely.
 
 **Request:**
 ```
@@ -657,7 +669,7 @@ Authorization: Bearer <adminAccessToken>
 Content-Type: multipart/form-data
 
 Form fields:
-  data: {"name":"Smartphone X Pro","price":899.99}
+  data: {"name":"Smartphone X Pro","price":899.99,"isActive":true}
   images: <file1> (optional, replaces imageUrls)
 ```
 
@@ -672,7 +684,7 @@ Form fields:
 
 ### 7.5 DELETE /api/v1/product/:productId — Delete product
 
-Protected — `admin`. **Soft delete** — sets `isActive: false`.
+Protected — `admin`. **Soft delete** — sets `isDeleted: true` and `isActive: false` (not toggleable back via delete).
 
 **Request:**
 ```
@@ -688,6 +700,7 @@ Authorization: Bearer <adminAccessToken>
   "data": {
     "_id": "664f1a2b3c4d5e6f7a8b9c0d",
     "isActive": false,
+    "isDeleted": true,
     "...": "rest of product fields"
   }
 }
@@ -699,7 +712,9 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/order`
 
-Order model fields: `user` (ObjectId → User, attached automatically from token), `products[]` (`{product, quantity, unitPrice}`), `coupon`, `totalAmount`, `discount`, `deliveryCharge`, `finalAmount`, `status`, `shippingAddress`, `paymentMethod` (`COD` | `Online`), `paymentStatus` (`Pending` | `Paid` | `Failed`), payment gateway tracking fields, timestamps.
+Order model fields: `user` (ObjectId → User, attached automatically from token), `products[]` (`{product, quantity, unitPrice}`), `coupon`, `totalAmount`, `discount`, `deliveryCharge`, `finalAmount`, `currency`, `status`, `shippingAddress`, `paymentMethod` (`COD` | `Online`), `paymentStatus` (`Pending` | `Paid` | `Failed`), `paymentProvider` (`stripe`/`sslcommerz`/`bkash`), gateway tracking fields (`stripeSessionId`, `sslSessionKey`, `transactionId`), FX fields (`fxRate`, `fxBaseCurrency`), timestamps.
+
+**All money fields are computed server-side** — the client never sends `totalAmount`, `discount`, `finalAmount`, or `unitPrice`. `currency` is inherited from the products (all products in an order must share the same currency, else 400).
 
 ### Order status lifecycle
 
@@ -739,10 +754,14 @@ Authorization: Bearer <adminAccessToken>
       "discount": 0,
       "deliveryCharge": 50,
       "finalAmount": 1649.98,
+      "currency": "usd",
       "status": "Pending",
       "shippingAddress": "123 Main Street, Dhaka",
       "paymentMethod": "COD",
       "paymentStatus": "Pending",
+      "paymentProvider": null,
+      "fxRate": null,
+      "fxBaseCurrency": null,
       "createdAt": "2026-07-15T10:00:00.000Z",
       "updatedAt": "2026-07-15T10:00:00.000Z"
     }
@@ -750,9 +769,29 @@ Authorization: Bearer <adminAccessToken>
 }
 ```
 
-### 8.2 GET /api/v1/order/:orderId — Get order details
+### 8.2 GET /api/v1/order/my-orders — Get my orders (customer)
 
-Protected — `admin`, `customer`. (Note: ownership is not enforced in the service — any authenticated admin or customer who knows the order ID can fetch it.)
+Protected — `customer`. Returns only the authenticated customer's orders.
+
+**Request:**
+```
+GET /api/v1/order/my-orders?status=Pending&page=1&limit=10
+Authorization: Bearer <customerAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "My orders retrieved successfully",
+  "meta": { "page": 1, "limit": 10, "total": 2, "totalPage": 1 },
+  "data": [ { "...": "same structure as list item above" } ]
+}
+```
+
+### 8.3 GET /api/v1/order/:orderId — Get order details
+
+Protected — `admin`, `customer`. **Ownership is enforced** — an admin or the user who placed the order can view it; anyone else gets `401 You are not authorized!`.
 
 **Request:**
 ```
@@ -769,9 +808,9 @@ Authorization: Bearer <accessToken>
 }
 ```
 
-### 8.3 POST /api/v1/order — Create order
+### 8.4 POST /api/v1/order — Create order
 
-Protected — `admin`, `customer`. The authenticated user is attached as the order owner automatically. Each product is validated (exists, active, sufficient stock); stock is **decremented** on order creation.
+Protected — `admin`, `customer`. The authenticated user is attached as the order owner automatically. Each product is validated (exists, not deleted, active, sufficient stock, same currency); stock is **decremented** on order creation inside a transaction.
 
 **Request:**
 ```
@@ -781,22 +820,21 @@ Content-Type: application/json
 
 {
   "products": [
-    { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 2, "unitPrice": 799.99 }
+    { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 2 }
   ],
   "coupon": "SAVE20",
-  "totalAmount": 1599.98,
-  "discount": 0,
   "deliveryCharge": 50,
-  "finalAmount": 1649.98,
   "shippingAddress": "123 Main Street, Dhaka",
-  "paymentMethod": "COD"
+  "paymentMethod": "Online"
 }
 ```
 
-- `products` — required, at least 1 item; `unitPrice` is the price snapshot at order time.
-- `coupon` — optional string.
+- `products` — required, at least 1 item. Only `product` (id) and `quantity` are needed — `unitPrice` comes from the DB.
+- `coupon` — optional string (verified: exists, active, in date range, meets min order).
+- `deliveryCharge` — optional number, must be ≥ 0.
+- `shippingAddress` — required string.
 - `paymentMethod` — `"COD"` or `"Online"`.
-- `totalAmount`, `finalAmount` — required numbers. `discount`/`deliveryCharge` default to `0`.
+- **Do not send** `totalAmount`, `discount`, `finalAmount`, `unitPrice`, `currency`, `user` — all computed/attached server-side.
 
 **Response (201):**
 ```json
@@ -812,9 +850,10 @@ Content-Type: application/json
     "discount": 0,
     "deliveryCharge": 50,
     "finalAmount": 1649.98,
+    "currency": "usd",
     "status": "Pending",
     "shippingAddress": "123 Main Street, Dhaka",
-    "paymentMethod": "COD",
+    "paymentMethod": "Online",
     "paymentStatus": "Pending",
     "createdAt": "2026-07-15T10:00:00.000Z",
     "updatedAt": "2026-07-15T10:00:00.000Z"
@@ -822,9 +861,38 @@ Content-Type: application/json
 }
 ```
 
-**Errors:** 404 "Product with ID X not found!" / 400 "Product is not available!" / 400 "Insufficient stock for ... Available: N"
+**Errors:** 404 "Product with ID X not found!" / 400 "Product ... is not available!" / 400 "Insufficient stock for ... Available: N" / 400 "All products in an order must have the same currency!" / 400 "Coupon has expired!" etc.
 
-### 8.4 PATCH /api/v1/order/:orderId/status — Change order status
+### 8.5 PATCH /api/v1/order/:orderId — Update order
+
+Protected — `admin`, `customer`. **Ownership is enforced** (admin or owner). Re-validates + re-prices the product list (restores old stock, decrements new quantities in a transaction), re-verifies coupon, recomputes `finalAmount` and `currency`. Locked once `Completed`/`Cancelled`.
+
+**Request:**
+```
+PATCH /api/v1/order/666a1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "products": [ { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 3 } ],
+  "coupon": "SAVE20",
+  "deliveryCharge": 60,
+  "shippingAddress": "456 New Street, Dhaka"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Order updated successfully",
+  "data": { "...": "updated order with recomputed totals" }
+}
+```
+
+**Errors:** 401 (not owner/admin), 400 "Cannot modify a completed/cancelled order!"
+
+### 8.6 PATCH /api/v1/order/:orderId/status — Change order status
 
 Protected — `admin`.
 
@@ -858,25 +926,27 @@ Content-Type: application/json
 
 Parent route: `/api/v1/payment`
 
-Three providers: **Stripe** (international), **SSLCommerz** (Bangladesh), **bKash** (Bangladesh). Each provider has an **initiate** endpoint (returns a payment URL / session for the frontend to send the user to) and a **validate** endpoint (confirms the result and updates the order).
+Three providers: **Stripe** (international), **SSLCommerz** (Bangladesh), **bKash** (Bangladesh). Each provider has an **initiate** endpoint (returns a gateway URL for the frontend to send the user to) and a **validate** endpoint (confirms the result and updates the order).
+
+**Amounts are always taken from the order's `finalAmount`** — never client-supplied. A paid order (`paymentStatus: "Paid"`) cannot be re-initialized (`400 This order has already been paid!`). Missing order → `404 Order not found!`.
 
 ### How the flow works (high level)
 
 ```
 1. Frontend creates an order           → POST /api/v1/order
 2. Frontend calls provider init        → POST /api/v1/payment/:orderId/<provider>/init
-   → Server returns gatewayUrl / sessionId
+   → Server returns gatewayUrl
 3. Frontend redirects user to gatewayUrl
 4. User pays on the gateway
-5. Provider redirects user back (Stripe: to server, then to frontend;
-   SSLCommerz: to server which redirects to frontend; bKash: to server callback URL)
+5. Provider redirects user back to the backend callback route
 6. On success, the server marks the order:
-   paymentStatus = "Paid", status = "Processing"
+   paymentStatus = "Paid", status = "Processing", paymentProvider = <provider>
+   then redirects the browser to FRONTEND_URL/payment/success (or /payment/failed)
 ```
 
 ### 9.1 POST /api/v1/payment/:orderId/stripe/init — Initiate Stripe
 
-Protected — `admin`, `customer`. Uses Stripe **Checkout Sessions** (hosted page).
+Protected — `admin`, `customer`. Uses Stripe **Checkout Sessions** (hosted page). **Body is optional** — amount and currency are derived from the order.
 
 **Request:**
 ```
@@ -884,14 +954,8 @@ POST /api/v1/payment/666a1a2b3c4d5e6f7a8b9c0d/stripe/init
 Authorization: Bearer <accessToken>
 Content-Type: application/json
 
-{
-  "amount": 1500,
-  "currency": "usd"
-}
+{}
 ```
-
-- `amount` — required, number. If omitted value invalid, order's `finalAmount` is used as fallback in the service.
-- `currency` — optional, default `usd`.
 
 **Response (200):**
 ```json
@@ -907,24 +971,19 @@ Content-Type: application/json
 }
 ```
 
-**Frontend action:** redirect the browser to `data.gatewayUrl`. Keep `data.sessionId` — it is used for validation.
+**Currency strategy:** if the order's currency is Stripe-supported, it is charged directly. If not (e.g. `bdt`), the `finalAmount` is converted to **USD** via a free FX API and `fxRate` + `fxBaseCurrency` are recorded on the order for reconciliation.
 
-### 9.2 POST /api/v1/payment/stripe/validate — Validate Stripe
+**Frontend action:** redirect the browser to `data.gatewayUrl`.
 
-> **Note:** The `POST /stripe/validate` route is **not currently registered** in the server (`payment.routes.ts` defines only `/stripe/success` and `/stripe/cancel` callbacks, plus the `init` route). Validation happens automatically via the **Stripe Checkout redirect**. Use the flow below instead of calling `/stripe/validate` directly.
+### 9.2 Stripe redirect callbacks — `/stripe/success` and `/stripe/cancel`
 
-**How validation actually works (hosted Checkout flow):**
+> **Note:** `POST /stripe/validate` is **not registered** — the routes are `/stripe/success` and `/stripe/cancel` (both `router.all`, no auth — they are provider/browser callbacks).
 
-1. `POST /:orderId/stripe/init` returns `gatewayUrl` (a `checkout.stripe.com` link) and `sessionId`.
-2. Redirect the browser to `gatewayUrl`.
-3. Stripe redirects the browser to `GET /api/v1/payment/stripe/success?session_id=<id>&orderId=<orderId>` on success, or `GET /api/v1/payment/stripe/cancel?orderId=<orderId>` on cancel.
-4. The server validates the session and updates the order (`paymentStatus: "Paid"`, `status: "Processing"`), then redirects the browser to:
+1. After the user pays, Stripe redirects the browser to `GET /api/v1/payment/stripe/success?session_id=<id>&orderId=<orderId>` (or `/stripe/cancel` on cancel).
+2. The server validates the session; on success updates the order (`paymentStatus: "Paid"`, `status: "Processing"`, `paymentProvider: "stripe"`, `transactionId` = session id) and redirects the browser to:
    - `FRONTEND_URL/payment/success?tran_id=<sessionId>` on success
    - `FRONTEND_URL/payment/failed` on failure/cancel
-
-**Manual validation (optional, if you have a `sessionId` from a prior init):** the underlying utility exists, but there is no public route exposed for it. The redirect callbacks above are the supported path.
-
-`data.status` is `"success"` | `"failed"` | `"pending"` | `"cancelled"`. On success the server sets the order to `Paid` / `Processing`.
+3. When called via POST (e.g. `{ "sessionId": "..." }`), the same handler returns **JSON** instead of redirecting.
 
 **Redirect callbacks (do not call manually):**
 - `GET/POST /api/v1/payment/stripe/success?session_id=<id>&orderId=<orderId>` — Stripe redirects here after payment; the server validates, then redirects the browser to `FRONTEND_URL/payment/success?tran_id=<transactionId>`.
@@ -932,7 +991,7 @@ Content-Type: application/json
 
 ### 9.3 POST /api/v1/payment/:orderId/sslcommerz/init — Initiate SSLCommerz
 
-Protected — `admin`, `customer`. Requires full customer + shipping details. The server auto-generates `tran_id`, `success_url`, `fail_url`, `cancel_url`, `ipn_url`; you do not send them.
+Protected — `admin`, `customer`. **Body is optional** — all `cus_*`/`ship_*` fields are auto-filled from the order user's profile (`name`, `email`, `phoneNo`, `address`, `city`, `state`, `postcode`, `country`) with Dhaka/BD defaults. Any field can be overridden via body. The server generates `tran_id`, `success_url`, `fail_url`, `cancel_url`, `ipn_url`; amount from `finalAmount`, currency BDT.
 
 **Request:**
 ```
@@ -940,28 +999,10 @@ POST /api/v1/payment/666a1a2b3c4d5e6f7a8b9c0d/sslcommerz/init
 Authorization: Bearer <accessToken>
 Content-Type: application/json
 
-{
-  "total_amount": 1500,
-  "product_name": "E-commerce Order",
-  "product_category": "General",
-  "cus_name": "John Doe",
-  "cus_email": "customer@example.com",
-  "cus_phone": "01712345678",
-  "cus_add1": "123 Main Street",
-  "cus_city": "Dhaka",
-  "cus_state": "Dhaka",
-  "cus_postcode": "1200",
-  "cus_country": "Bangladesh",
-  "ship_name": "John Doe",
-  "ship_add1": "123 Main Street",
-  "ship_city": "Dhaka",
-  "ship_state": "Dhaka",
-  "ship_postcode": "1200",
-  "ship_country": "Bangladesh"
-}
+{}
 ```
 
-Required fields (per validation): `total_amount`, `product_name`, `cus_name`, `cus_email`, `cus_phone`, `cus_add1`, `cus_city`, `cus_state`, `cus_postcode`, `cus_country`, `ship_name`, `ship_add1`, `ship_city`, `ship_state`, `ship_postcode`, `ship_country`. Optional: `product_category` (default "General"), `currency` (default "BDT").
+Optional overridable body fields: `product_name`, `product_category`, `cus_name`, `cus_email`, `cus_phone`, `cus_add1`, `cus_add2`, `cus_city`, `cus_state`, `cus_postcode`, `cus_country`, `ship_name`, `ship_add1`, `ship_add2`, `ship_city`, `ship_state`, `ship_postcode`, `ship_country`.
 
 **Response (200):**
 ```json
@@ -979,24 +1020,17 @@ Required fields (per validation): `total_amount`, `product_name`, `cus_name`, `c
 
 **Frontend action:** redirect the browser to `data.gatewayUrl`.
 
-### 9.4 POST /api/v1/payment/sslcommerz/validate — Validate SSLCommerz
+### 9.4 GET|POST /api/v1/payment/sslcommerz/validate — SSLCommerz validate callback
 
-> **Note:** This route is registered as `router.all("/sslcommerz/validate", ...)` and **always responds with a browser redirect** (never JSON), whether called by SSLCommerz's server or by your frontend. Use it as the callback target for SSLCommerz's `success_url`/`ipn_url`; do **not** rely on it for a JSON response.
-
-**How validation actually works:**
+> **Note:** This route is registered as `router.all("/sslcommerz/validate", ...)` with **no auth** and **always responds with a browser redirect** (never JSON), whether called by SSLCommerz's server or by your frontend. Use it as the callback target for SSLCommerz's `success_url`/`ipn_url`; do **not** rely on it for a JSON response.
 
 1. SSLCommerz calls the server's `success_url`/`fail_url`/`cancel_url`/`ipn_url` (all configured server-side to hit this handler) with `val_id` and `tran_id`.
-2. The server validates the transaction with SSLCommerz and updates the order (`paymentStatus: "Paid"`, `status: "Processing"`).
+2. The server validates the transaction with SSLCommerz; on success updates the order (`paymentStatus: "Paid"`, `status: "Processing"`, `paymentProvider: "sslcommerz"`), matching by the stored `transactionId` (the raw unprefixed `tran_id`).
 3. The browser is redirected to:
    - `FRONTEND_URL/payment/success?tran_id=<tran_id>` on success
    - `FRONTEND_URL/payment/failed?tran_id=<tran_id>` on failure
 
-If you call this endpoint from your own frontend code, you will receive a **302 redirect** to one of those two frontend URLs — handle it as a redirect, not a JSON response.
-
-**Redirect callbacks (do not call manually):**
-- `GET/POST /api/v1/payment/sslcommerz/validate?val_id=...&tran_id=...` — SSLCommerz hits the server's success/fail/ipn URLs, all mapped to this handler. On success the browser is redirected to `FRONTEND_URL/payment/success?tran_id=<tran_id>`; otherwise `FRONTEND_URL/payment/failed?tran_id=<tran_id>`.
-
-> **Frontend requirement:** implement frontend routes at `FRONTEND_URL/payment/success` and `FRONTEND_URL/payment/failed` — the backend redirects browsers there after gateway callbacks.
+If you call this endpoint from your own frontend code, you will receive a **302 redirect** — handle it as a redirect, not a JSON response.
 
 ### 9.5 POST /api/v1/payment/:orderId/bkash/init — Initiate bKash
 
@@ -1009,12 +1043,11 @@ Authorization: Bearer <accessToken>
 Content-Type: application/json
 
 {
-  "amount": 1500,
   "customerNumber": "01712345678"
 }
 ```
 
-Required: `amount`, `customerNumber`.
+Required: `customerNumber`. Amount from `finalAmount`, currency BDT. The bKash `paymentID` is returned as `transactionId` and stored on the order as `transactionId` for callback matching.
 
 **Response (200):**
 ```json
@@ -1033,7 +1066,7 @@ Required: `amount`, `customerNumber`.
 
 ### 9.6 POST /api/v1/payment/bkash/validate — Validate bKash
 
-Protected — `admin`, `customer`. Returns **JSON** (unlike the SSLCommerz validate). Uses the `paymentID` from the bKash gateway.
+Protected — `admin`, `customer`. Returns **JSON** (unlike the SSLCommerz validate). Uses the `paymentID` from the bKash gateway; matches the order by the stored `transactionId` (raw `paymentID`, no prefix).
 
 **Request:**
 ```
@@ -1059,8 +1092,6 @@ Content-Type: application/json
   }
 }
 ```
-
-> **Note:** on success the service marks the most recently created order (`paymentStatus: "Paid"`, `status: "Processing"`), not the order tied to a specific `paymentID`. For a single in-flight checkout this is fine; for concurrent checkouts the backend should be tightened to match the order via the bKash `payerReference`/`merchantInvoiceNumber`.
 
 ---
 
@@ -1281,7 +1312,7 @@ Required: `code`, `discountType`, `discountValue`, `startDate`, `endDate`. Optio
 
 ### 12.2 GET /api/v1/coupon — Get all coupons
 
-Protected — `admin`. Soft-deleted coupons are excluded automatically.
+Protected — `admin`. Soft-deleted coupons are excluded automatically. Returns all non-deleted coupons (expired/inactive included — admins manage them from here).
 
 **Query params:** `searchTerm` (searches `code`), `page`, `limit`, `sort`, `fields`, plus filters: `discountType`, `isActive`, `isDeleted`.
 
@@ -1301,13 +1332,43 @@ Authorization: Bearer <adminAccessToken>
 }
 ```
 
-### 12.3 GET /api/v1/coupon/:couponCode — Get coupon by code
+### 12.3 GET /api/v1/coupon/:couponId — Get single coupon (admin)
+
+Protected — `admin`. Admin single fetch — no expiry/active check; 404 only if missing or soft-deleted.
+
+**Request:**
+```
+GET /api/v1/coupon/666c1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Coupon retrieved successfully",
+  "data": {
+    "_id": "666c1a2b3c4d5e6f7a8b9c0d",
+    "code": "SAVE20",
+    "discountType": "percentage",
+    "discountValue": 20,
+    "minOrderAmount": 500,
+    "maxDiscountAmount": 200,
+    "startDate": "2026-08-01T00:00:00.000Z",
+    "endDate": "2026-12-31T00:00:00.000Z",
+    "isActive": true,
+    "isDeleted": false
+  }
+}
+```
+
+### 12.4 GET /api/v1/coupon/by-code/:code — Get coupon by code (public)
 
 Public. **Use this on the checkout page to validate a coupon before order creation.** Case-insensitive; validates date range and active status.
 
 **Request:**
 ```
-GET /api/v1/coupon/SAVE20
+GET /api/v1/coupon/by-code/SAVE20
 ```
 
 **Response (200):**
@@ -1332,13 +1393,13 @@ GET /api/v1/coupon/SAVE20
 
 **Errors:** 404 "Coupon not found!" / 400 "Coupon is not yet active!" / 400 "Coupon has expired!" / 400 "Coupon is not active!"
 
-### 12.4 PATCH /api/v1/coupon/:couponCode/update-coupon — Update coupon
+### 12.5 PATCH /api/v1/coupon/:couponId — Update coupon
 
-Protected — `admin`. Lookup is by coupon **code** (case-insensitive).
+Protected — `admin`. Lookup is by coupon **id**.
 
 **Request:**
 ```
-PATCH /api/v1/coupon/SAVE20/update-coupon
+PATCH /api/v1/coupon/666c1a2b3c4d5e6f7a8b9c0d
 Authorization: Bearer <adminAccessToken>
 Content-Type: application/json
 
@@ -1357,9 +1418,9 @@ Content-Type: application/json
 }
 ```
 
-### 12.5 DELETE /api/v1/coupon/:couponId — Delete coupon
+### 12.6 DELETE /api/v1/coupon/:couponId — Delete coupon
 
-Protected — `admin`. Lookup is by coupon **ID**. **Soft delete** — sets `isDeleted: true` and `isActive: false`.
+Protected — `admin`. Lookup is by coupon **id**. **Soft delete** — sets `isDeleted: true` only (does not touch `isActive`).
 
 **Request:**
 ```
@@ -1376,7 +1437,6 @@ Authorization: Bearer <adminAccessToken>
     "_id": "666c1a2b3c4d5e6f7a8b9c0d",
     "code": "SAVE20",
     "isDeleted": true,
-    "isActive": false,
     "...": "rest of coupon fields"
   }
 }
@@ -1572,12 +1632,12 @@ GET /api/v1/review/667d1a2b3c4d5e6f7a8b9c0d
 
 ### 14.3 POST /api/v1/review — Create review
 
-Protected — `admin`, `customer`. Duplicate user+product reviews are rejected. On creation, the product's `averageRating` and `ratingCount` are **recalculated automatically**.
+Protected — `customer` only (admin/manager tokens get `401 You are not authorized!`). Duplicate user+product reviews are rejected. On creation, the product's `averageRating` and `ratingCount` are **recalculated automatically**. `isVerifiedPurchase` is currently always `false` (order verification is a placeholder).
 
 **Request:**
 ```
 POST /api/v1/review
-Authorization: Bearer <accessToken>
+Authorization: Bearer <customerAccessToken>
 Content-Type: application/json
 
 {
@@ -1609,15 +1669,189 @@ Content-Type: application/json
 
 **Errors:** 404 "Product not found!" / 400 "Product is not available!" / 409 "You have already reviewed this product!"
 
+### 14.4 PATCH /api/v1/review/:reviewId/status — Toggle review flag (admin)
+
+Protected — `admin`. Toggles `isFlagged`; flagged reviews are hidden from public reads and excluded from the product's rating calculation.
+
+**Request:**
+```
+PATCH /api/v1/review/667d1a2b3c4d5e6f7a8b9c0d/status
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Review is now flagged",
+  "data": { "_id": "667d...", "isFlagged": true, "...": "rest of review fields" }
+}
+```
+
+### 14.5 DELETE /api/v1/review/:reviewId — Delete review (admin)
+
+Protected — `admin`. Hard deletes the review, removes it from the product's `reviews` array, and recalculates the product rating.
+
+**Request:**
+```
+DELETE /api/v1/review/667d1a2b3c4d5e6f7a8b9c0d
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Review deleted successfully",
+  "data": { "_id": "667d...", "rating": 4, "...": "rest of review fields" }
+}
+```
+
 ---
 
-## 15. Payment Flow Walkthroughs
+## 15. Settings Module
+
+Parent route: `/api/v1/settings`
+
+The Settings module is a **single singleton document** (`_id: "singleton"`) that drives the whole storefront: brand identity, theme (colors/fonts/radius/global CSS), hero slides, testimonials, navbar (links + role groups), footer, contact, about, and limited-offer banner. The whole config is readable in one request, and each section can be updated independently by an admin. Seeded at deploy time via `npm run seed:settings` (prefilled from the `perfume_oil` preset).
+
+**Full document shape:**
+```json
+{
+  "_id": "singleton",
+  "brand": { "name": "Attor", "tagline": "Essence of Distinction", "description": "Premium perfume oils crafted for the discerning.", "niche": "perfume_oil", "nicheLabel": "Perfume Oil", "logo": "/demo/perfume-oil/logo.png", "favicon": "" },
+  "theme": {
+    "colors": { "primary": "oklch(0.514 0.222 16.935)", "primaryForeground": "oklch(0.969 0.015 12.422)", "background": "oklch(1 0 0)", "foreground": "oklch(0.145 0 0)", "...": "17 oklch CSS variables" },
+    "dark": { "enabled": false, "colors": {} },
+    "fonts": { "family": "Inter", "sizes": { "h1": "2.5rem", "h2": "2rem", "h3": "1.5rem", "body": "1rem", "small": "0.875rem" } },
+    "radius": "0.625rem",
+    "globalCss": ""
+  },
+  "hero": { "slides": [{ "image": "/demo/perfume-oil/banner/hero-1.webp", "headline": "Discover Your Signature Scent", "subtext": "...", "ctaText": "Explore Collection", "ctaLink": "/products", "order": 0 }] },
+  "testimonials": { "heading": "What Our Customers Say", "items": [{ "name": "Ayesha Rahman", "role": "Fragrance Collector", "quote": "...", "rating": 5, "avatar": "/demo/perfume-oil/testimonials/tm-3.jpg", "order": 0 }] },
+  "navbar": {
+    "links": [{ "label": "Home", "url": "/", "order": 0, "children": [] }, { "label": "Products", "url": "/products", "order": 1, "children": [] }],
+    "groups": {
+      "public": [{ "label": "Home", "url": "/", "order": 0, "children": [] }],
+      "auth": [{ "label": "Login", "url": "/login", "order": 0, "children": [] }, { "label": "Sign Up", "url": "/signup", "order": 1, "children": [] }],
+      "customer": [{ "label": "My Account", "url": "/dashboard/customer", "order": 0, "children": [] }],
+      "admin": [{ "label": "Admin Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }]
+    }
+  },
+  "footer": { "description": "...", "columns": [{ "title": "Quick Links", "links": [{ "label": "Products", "url": "/products" }] }], "socialLinks": [{ "platform": "twitter", "url": "https://twitter.com/attor" }], "copyrightText": "© 2026 Attor. All rights reserved.", "newsletter": { "enabled": true, "heading": "Stay in the loop" } },
+  "contact": { "address": "123 Perfume Avenue, New York, NY 10001", "phone": "+1 (555) 123-4567", "email": "hello@attor.com", "hours": "Mon–Sat 9am–6pm", "mapEmbedUrl": "", "social": { "twitter": "https://twitter.com/attor", "instagram": "https://instagram.com/attor", "facebook": "https://facebook.com/attor" } },
+  "about": { "story": "...", "mission": "...", "image": "/demo/perfume-oil/about.jpeg", "stats": [{ "label": "Founded", "value": "2018" }, { "label": "Oud Variants", "value": "30+" }] },
+  "limitedOffer": { "enabled": false, "badge": "Limited Time", "title": "Summer Sale", "subtitle": "Up to 50% off", "ctaText": "Shop Now", "ctaLink": "/sale", "image": "", "endsAt": "2026-08-31T23:59:59.000Z" },
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z"
+}
+```
+
+> The full static default (matching the seeded `perfume_oil` preset) is documented in `src/app/modules/settings/docs/settings.json` — use it as the frontend's static fallback data when the backend is unreachable.
+
+### 15.1 GET /api/v1/settings — Get settings (public)
+
+Public. Returns the full singleton document (cached in memory; subsequent reads served from cache until a write invalidates it).
+
+**Request:**
+```
+GET /api/v1/settings
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Settings retrieved successfully",
+  "data": { "...": "full settings document above" }
+}
+```
+
+**Error:** 404 "Settings not seeded. Run the settings seed script." — treat like "backend unavailable" and render static defaults.
+
+### 15.2 PATCH /api/v1/settings — Update brand (admin)
+
+Protected — `admin`. **Multipart form-data** — JSON payload in `data`, optional `logo` and `favicon` files.
+
+**Request:**
+```
+PATCH /api/v1/settings
+Authorization: Bearer <adminAccessToken>
+Content-Type: multipart/form-data
+
+Form fields:
+  data: {"brand":{"name":"Attor","tagline":"New tagline","description":"...","niche":"clothing","nicheLabel":"Clothing"}}
+  logo: <image file> (optional)
+  favicon: <image file> (optional)
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Settings updated successfully",
+  "data": { "...": "the whole updated settings document" }
+}
+```
+
+### 15.3 PATCH /api/v1/settings/:section — Update one section (admin)
+
+Protected — `admin`. Sections: `theme`, `hero`, `testimonials`, `navbar`, `footer`, `contact`, `about`, `limitedOffer`. **Multipart** (`data` JSON + optional `images` files for hero/testimonials/about/limitedOffer; plain JSON for the rest). Each section has its own schema; unknown section → 400, invalid body → 400. Writes invalidate the cache.
+
+**Request (hero, plain JSON):**
+```
+PATCH /api/v1/settings/hero
+Authorization: Bearer <adminAccessToken>
+Content-Type: application/json
+
+{
+  "slides": [{ "image": "/demo/perfume-oil/banner/hero-1.webp", "headline": "New Hero Title", "subtext": "Summer Sale", "ctaText": "Shop Now", "ctaLink": "/shop", "order": 0 }]
+}
+```
+
+**Image upload semantics** (same as Product module — positional):
+- `hero` → `data` (slides) + `images` files → `slides[i].image = files[i].path`.
+- `testimonials` → `data` (items) + `images` files → `items[i].avatar = files[i].path`.
+- `about` / `limitedOffer` → `data` + `images[0]` → `image`.
+- Other sections → plain JSON.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "hero settings updated successfully",
+  "data": { "...": "the whole updated settings document" }
+}
+```
+
+### 15.4 PATCH /api/v1/settings/preset/:niche — Apply niche preset (admin)
+
+Protected — `admin`. Applies a full niche preset (brand + hero + about + contact + footer) in one write. Valid niches: `clothing`, `perfume_oil`, `eyewear`. Unknown → 400.
+
+**Request:**
+```
+PATCH /api/v1/settings/preset/clothing
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "clothing preset applied successfully",
+  "data": { "...": "the whole updated settings document" }
+}
+```
+
+---
+
+## 16. Payment Flow Walkthroughs
 
 ### Stripe (recommended for international payments)
 
 ```
 1. POST /api/v1/order                     (create order, paymentMethod: "Online")
-2. POST /api/v1/payment/:orderId/stripe/init   { amount, currency: "usd" }
+2. POST /api/v1/payment/:orderId/stripe/init   (body optional — amount/currency derived from the order)
    → data: { gatewayUrl, sessionId }
 3. window.location.href = data.gatewayUrl      (user pays on Stripe hosted page)
 4. Stripe redirects to:
@@ -1632,7 +1866,7 @@ Content-Type: application/json
 
 ```
 1. POST /api/v1/order                     (create order, paymentMethod: "Online")
-2. POST /api/v1/payment/:orderId/sslcommerz/init  (full cus_* and ship_* details)
+2. POST /api/v1/payment/:orderId/sslcommerz/init  (body optional — cus_*/ship_* auto-filled from the user profile)
    → data: { gatewayUrl, sessionId }
 3. window.location.href = data.gatewayUrl      (user pays on SSLCommerz page)
 4. SSLCommerz redirects to /api/v1/payment/sslcommerz/validate?val_id=...&tran_id=...
@@ -1646,7 +1880,7 @@ Content-Type: application/json
 
 ```
 1. POST /api/v1/order                     (create order, paymentMethod: "Online")
-2. POST /api/v1/payment/:orderId/bkash/init  { amount, customerNumber }
+2. POST /api/v1/payment/:orderId/bkash/init  { customerNumber }
    → data: { gatewayUrl }
 3. window.location.href = data.gatewayUrl      (user completes payment in bKash)
 4. bKash calls the configured callback URL (BKASH_CALLBACK_URL) with a paymentID
@@ -1667,15 +1901,15 @@ The backend redirects the browser to:
 
 ---
 
-## 16. Frontend Integration Notes
+## 17. Frontend Integration Notes
 
-### 16.1 Setting up an API client
+### 17.1 Setting up an API client
 
 - **Base URL**: `http://localhost:3001/api/v1` (dev). In production use the deployed server URL.
 - **With credentials**: use `credentials: "include"` (or `withCredentials: true` in Axios) so the `refreshToken` cookie is sent with `/auth/refresh-token`.
 - **CORS**: the server currently allows only `http://localhost:3000`. In production the server's CORS origin must be updated to the deployed frontend URL.
 
-### 16.2 Authorization header helper
+### 17.2 Authorization header helper
 
 ```
 Authorization: Bearer <accessToken>
@@ -1683,7 +1917,7 @@ Authorization: Bearer <accessToken>
 
 Store the access token after login/register/refresh and attach it to every request to a protected endpoint. On a 401 response, attempt a refresh (`POST /auth/refresh-token`), then retry the original request once.
 
-### 16.3 Multipart uploads (create/update with files)
+### 17.3 Multipart uploads (create/update with files)
 
 These endpoints require `multipart/form-data` with the JSON payload **inside a `data` field**:
 
@@ -1693,6 +1927,10 @@ These endpoints require `multipart/form-data` with the JSON payload **inside a `
 | `POST|PATCH /product[/:productId]` | JSON | `images` (array, max 10) |
 | `POST|PATCH /brand[/:id]` | JSON | `logo` (single) |
 | `POST|PATCH /category[/:id]` | JSON | `icon` (single) |
+| `PATCH /settings` | JSON | `logo` (single) + `favicon` (single) |
+| `PATCH /settings/hero` | JSON | `images` (array, maps to `slides[i].image`) |
+| `PATCH /settings/testimonials` | JSON | `images` (array, maps to `items[i].avatar`) |
+| `PATCH /settings/about`, `/settings/limitedOffer` | JSON | `images` (`images[0]` → `image`) |
 
 Example with `fetch`/`FormData`:
 
@@ -1710,16 +1948,16 @@ const res = await fetch(`${BASE}/brand`, {
 
 > Do **not** manually set `Content-Type: multipart/form-data` — the browser adds the boundary automatically. If the `data` field is missing, the server responds 400 "Please provide data in the body under data key".
 
-### 16.4 Response parsing
+### 17.4 Response parsing
 
 - Check `success`. If `false`, show `message` (and optionally `errorSources[].message` per field).
 - On list endpoints, use `meta` (`page`, `limit`, `total`, `totalPage`) for pagination UI.
 
-### 16.5 Role-based UI
+### 17.5 Role-based UI
 
 Guard admin UI (dashboard, product/brand/category/coupon creation, order status changes, user management) behind role `admin`. The access token is a JWT — decode its payload to read `{ userId, name, email, role, isActive }`.
 
-### 16.6 Populated references
+### 17.6 Populated references
 
 Product/category/brand/review/order responses contain **populated embedded objects** instead of raw IDs for some fields:
 
@@ -1730,16 +1968,16 @@ Product/category/brand/review/order responses contain **populated embedded objec
 
 When sending these fields (e.g. `category` on product create), send the **plain ObjectId string**, not the populated object.
 
-### 16.7 Typical customer flow to implement
+### 17.7 Typical customer flow to implement
 
 1. Browse: `GET /product` (with filters) → product detail `GET /product/:id` → reviews `GET /review?product=<id>`
-2. Validate coupon at checkout: `GET /coupon/<CODE>`
+2. Validate coupon at checkout: `GET /coupon/by-code/<CODE>`
 3. Create order: `POST /order` (paymentMethod `"COD"` or `"Online"`)
 4. Pay online: call the provider init endpoint → redirect to `gatewayUrl`
 5. Handle redirect back on `/payment/success` / `/payment/failed`
-6. View orders: `GET /order/:id`
+6. View orders: `GET /order/my-orders`
 
-### 16.8 Typical admin flow to implement
+### 17.8 Typical admin flow to implement
 
 1. Login as admin → `GET /user` (manage users), `PATCH /user/:id/status`
 2. Manage catalog: CRUD `category`, `brand`, `product` (multipart)
@@ -1747,6 +1985,7 @@ When sending these fields (e.g. `category` on product create), send the **plain 
 4. Manage orders: `GET /order`, `PATCH /order/:id/status`
 5. Dashboard: `GET /meta`
 6. Moderate reviews: `GET /review?isFlagged=true`
+7. Manage storefront: `GET /settings`, `PATCH /settings/:section`, `PATCH /settings/preset/:niche`
 
 ---
 
@@ -1771,30 +2010,41 @@ When sending these fields (e.g. `category` on product create), send the **plain 
 | 15 | PATCH | `/api/v1/product/:productId` | admin | ✅ `data` + `images` |
 | 16 | DELETE | `/api/v1/product/:productId` | admin | – |
 | 17 | GET | `/api/v1/order` | admin | – |
-| 18 | GET | `/api/v1/order/:orderId` | admin, customer | – |
-| 19 | POST | `/api/v1/order` | admin, customer | – |
-| 20 | PATCH | `/api/v1/order/:orderId/status` | admin | – |
-| 21 | POST | `/api/v1/payment/:orderId/stripe/init` | admin, customer | – |
-| 22 | GET/POST | `/api/v1/payment/stripe/success` | – (callback, redirects to frontend) | – |
-| 23 | GET/POST | `/api/v1/payment/stripe/cancel` | – (callback, redirects to frontend) | – |
-| 24 | POST | `/api/v1/payment/:orderId/sslcommerz/init` | admin, customer | – |
-| 25 | GET/POST | `/api/v1/payment/sslcommerz/validate` | – (callback, always redirects) | – |
-| 26 | POST | `/api/v1/payment/:orderId/bkash/init` | admin, customer | – |
-| 27 | POST | `/api/v1/payment/bkash/validate` | admin, customer | – |
-| 28 | GET | `/api/v1/meta` | admin | – |
-| 29 | GET | `/api/v1/brand` | – | – |
-| 30 | POST | `/api/v1/brand` | admin | ✅ `data` + `logo` |
-| 31 | PATCH | `/api/v1/brand/:id` | admin | ✅ `data` + `logo` |
-| 32 | DELETE | `/api/v1/brand/:id` | admin | – |
-| 33 | POST | `/api/v1/coupon` | admin | – |
-| 34 | GET | `/api/v1/coupon` | admin | – |
-| 35 | GET | `/api/v1/coupon/:couponCode` | – | – |
-| 36 | PATCH | `/api/v1/coupon/:couponCode/update-coupon` | admin | – |
-| 37 | DELETE | `/api/v1/coupon/:couponId` | admin | – |
-| 38 | GET | `/api/v1/category` | – | – |
-| 39 | POST | `/api/v1/category` | admin | ✅ `data` + `icon` |
-| 40 | PATCH | `/api/v1/category/:id` | admin | ✅ `data` + `icon` |
-| 41 | DELETE | `/api/v1/category/:id` | admin | – |
-| 42 | GET | `/api/v1/review` | – | – |
-| 43 | GET | `/api/v1/review/:reviewId` | – | – |
-| 44 | POST | `/api/v1/review` | admin, customer | – |
+| 18 | GET | `/api/v1/order/my-orders` | customer | – |
+| 19 | GET | `/api/v1/order/:orderId` | admin, customer (owner) | – |
+| 20 | POST | `/api/v1/order` | admin, customer | – |
+| 21 | PATCH | `/api/v1/order/:orderId` | admin, customer (owner) | – |
+| 22 | PATCH | `/api/v1/order/:orderId/status` | admin | – |
+| 23 | POST | `/api/v1/payment/:orderId/stripe/init` | admin, customer | – |
+| 24 | GET/POST | `/api/v1/payment/stripe/success` | – (callback, redirects to frontend) | – |
+| 25 | GET/POST | `/api/v1/payment/stripe/cancel` | – (callback, redirects to frontend) | – |
+| 26 | POST | `/api/v1/payment/:orderId/sslcommerz/init` | admin, customer | – |
+| 27 | GET/POST | `/api/v1/payment/sslcommerz/validate` | – (callback, always redirects) | – |
+| 28 | POST | `/api/v1/payment/:orderId/bkash/init` | admin, customer | – |
+| 29 | POST | `/api/v1/payment/bkash/validate` | admin, customer | – |
+| 30 | GET | `/api/v1/meta` | admin | – |
+| 31 | GET | `/api/v1/brand` | – | – |
+| 32 | GET | `/api/v1/brand/:id` | – | – |
+| 33 | POST | `/api/v1/brand` | admin | ✅ `data` + `logo` |
+| 34 | PATCH | `/api/v1/brand/:id` | admin | ✅ `data` + `logo` |
+| 35 | DELETE | `/api/v1/brand/:id` | admin | – |
+| 36 | POST | `/api/v1/coupon` | admin | – |
+| 37 | GET | `/api/v1/coupon` | admin | – |
+| 38 | GET | `/api/v1/coupon/:couponId` | admin | – |
+| 39 | GET | `/api/v1/coupon/by-code/:code` | – | – |
+| 40 | PATCH | `/api/v1/coupon/:couponId` | admin | – |
+| 41 | DELETE | `/api/v1/coupon/:couponId` | admin | – |
+| 42 | GET | `/api/v1/category` | – | – |
+| 43 | GET | `/api/v1/category/:id` | – | – |
+| 44 | POST | `/api/v1/category` | admin | ✅ `data` + `icon` |
+| 45 | PATCH | `/api/v1/category/:id` | admin | ✅ `data` + `icon` |
+| 46 | DELETE | `/api/v1/category/:id` | admin | – |
+| 47 | GET | `/api/v1/review` | – | – |
+| 48 | GET | `/api/v1/review/:reviewId` | – | – |
+| 49 | POST | `/api/v1/review` | customer | – |
+| 50 | PATCH | `/api/v1/review/:reviewId/status` | admin | – |
+| 51 | DELETE | `/api/v1/review/:reviewId` | admin | – |
+| 52 | GET | `/api/v1/settings` | – | – |
+| 53 | PATCH | `/api/v1/settings` | admin | ✅ `data` + `logo` + `favicon` |
+| 54 | PATCH | `/api/v1/settings/:section` | admin | ✅ `data` + `images` (hero/testimonials/about/limitedOffer) |
+| 55 | PATCH | `/api/v1/settings/preset/:niche` | admin | – |

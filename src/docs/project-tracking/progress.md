@@ -1388,16 +1388,19 @@ Note: Matches the order by the stored `transactionId` (raw `paymentID`, no prefi
 
 ---
 
-## 11. Settings Module
-**Total Routes: 3**
+## 11. Settings Module (Completed ✔)
+**Total Routes: 4**
 
 | # | Route | Method | Description |
 |---|-------|--------|-------------|
 | 1 | `/settings` | GET | Get settings (public). Returns the singleton settings doc, cached in memory. |
-| 2 | `/settings` | PATCH | Update brand fields (Admin). `brandName`, `tagline`, `description`, `logo` (upload), `favicon`. |
-| 3 | `/settings/:section` | PATCH | Update one section (Admin). `theme`, `hero`, `navbar`, or `footer`. Invalid section → 400. |
+| 2 | `/settings` | PATCH | Update brand (Admin). Multipart: `data` JSON + optional `logo` + `favicon` files → updates the `brand` sub-doc. |
+| 3 | `/settings/:section` | PATCH | Update one section (Admin). Sections: `theme`, `hero`, `testimonials`, `navbar`, `footer`, `contact`, `about`, `limitedOffer`. Invalid section → 400. |
+| 4 | `/settings/preset/:niche` | PATCH | Apply a niche preset (Admin). `clothing` \| `perfume_oil` \| `eyewear` — brand + hero + about + contact + footer in one write. Unknown → 400. |
 
-The Settings module is a **single singleton document** (`_id: "singleton"`), created by the seed script (`npm run seed:settings`). Each section is a typed sub-schema (`theme`, `hero`, `navbar`, `footer`). Writes invalidate the in-memory cache. Settings holds site-wide config only — no content collections (products, posts, banners) belong here.
+The Settings module is a **single singleton document** (`_id: "singleton"`), created by the seed script (`npm run seed:settings`) prefilled from the `perfume_oil` preset. Each section is a typed sub-schema: `brand` (name/tagline/description/niche/nicheLabel/logo/favicon), `theme` (17 color vars + dark + fonts + radius + globalCss), `hero` (`slides[]`), `testimonials` (`heading` + `items[]`), `navbar` (`links[]` with `children[]` + role `groups`), `footer` (description/columns/socialLinks/copyrightText/newsletter), `contact`, `about` (story/mission/image/stats), `limitedOffer` (enabled/badge/title/subtitle/cta/endsAt). Writes invalidate the in-memory cache. Settings holds site-wide config only — no content collections (products, posts, banners) belong here.
+
+The full settings document format + static default data for the frontend lives in `src/app/modules/settings/docs/settings.json` (and `settings.md`).
 
 ### 11.1 GET /settings — Get Settings (Public)
 ```text
@@ -1410,55 +1413,97 @@ GET /api/v1/settings
     "message": "Settings retrieved successfully",
     "data": {
         "_id": "singleton",
-        "brandName": "Demo Shop",
-        "tagline": "Your one-stop shop",
-        "description": "Best products at best prices",
-        "logo": "https://res.cloudinary.com/.../logo.png",
-        "favicon": "https://res.cloudinary.com/.../favicon.ico",
+        "brand": {
+            "name": "Attor",
+            "tagline": "Essence of Distinction",
+            "description": "Premium perfume oils crafted for the discerning.",
+            "niche": "perfume_oil",
+            "nicheLabel": "Perfume Oil",
+            "logo": "/demo/perfume-oil/logo.png",
+            "favicon": ""
+        },
         "theme": {
-            "primaryColor": "#000000",
-            "secondaryColor": "#ffffff",
-            "fontFamily": "",
-            "logoUrl": ""
+            "colors": { "primary": "oklch(0.514 0.222 16.935)", "...": "17 oklch CSS variables" },
+            "dark": { "enabled": false, "colors": {} },
+            "fonts": { "family": "Inter", "sizes": { "h1": "2.5rem", "h2": "2rem", "h3": "1.5rem", "body": "1rem", "small": "0.875rem" } },
+            "radius": "0.625rem",
+            "globalCss": ""
         },
         "hero": {
-            "title": "Welcome",
-            "subtitle": "",
-            "backgroundImage": "",
-            "ctaText": "",
-            "ctaLink": ""
+            "slides": [
+                { "image": "/demo/perfume-oil/banner/hero-1.webp", "headline": "Discover Your Signature Scent", "subtext": "...", "ctaText": "Explore Collection", "ctaLink": "/products", "order": 0 }
+            ]
+        },
+        "testimonials": {
+            "heading": "What Our Customers Say",
+            "items": [
+                { "name": "Ayesha Rahman", "role": "Fragrance Collector", "quote": "...", "rating": 5, "avatar": "/demo/perfume-oil/testimonials/tm-3.jpg", "order": 0 }
+            ]
         },
         "navbar": {
-            "links": []
+            "links": [{ "label": "Home", "url": "/", "order": 0, "children": [] }],
+            "groups": {
+                "public": [{ "label": "Home", "url": "/", "order": 0, "children": [] }],
+                "auth": [{ "label": "Login", "url": "/login", "order": 0, "children": [] }],
+                "customer": [{ "label": "My Account", "url": "/dashboard/customer", "order": 0, "children": [] }],
+                "admin": [{ "label": "Admin Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }]
+            }
         },
         "footer": {
-            "links": [],
-            "copyrightText": "",
-            "socialLinks": []
+            "description": "Artisanal perfume oils crafted for those who seek the extraordinary...",
+            "columns": [{ "title": "Quick Links", "links": [{ "label": "Products", "url": "/products" }] }],
+            "socialLinks": [{ "platform": "twitter", "url": "https://twitter.com/attor" }],
+            "copyrightText": "© 2026 Attor. All rights reserved.",
+            "newsletter": { "enabled": true, "heading": "Stay in the loop" }
         },
-        "createdAt": "2025-01-01T00:00:00.000Z",
-        "updatedAt": "2025-01-01T00:00:00.000Z"
+        "contact": {
+            "address": "123 Perfume Avenue, New York, NY 10001",
+            "phone": "+1 (555) 123-4567",
+            "email": "hello@attor.com",
+            "hours": "Mon–Sat 9am–6pm",
+            "mapEmbedUrl": "",
+            "social": { "twitter": "https://twitter.com/attor", "instagram": "https://instagram.com/attor", "facebook": "https://facebook.com/attor" }
+        },
+        "about": {
+            "story": "Attor began with a passion for the ancient art of perfumery...",
+            "mission": "We believe fragrance is the most intimate form of expression...",
+            "image": "/demo/perfume-oil/about.jpeg",
+            "stats": [{ "label": "Founded", "value": "2018" }, { "label": "Oud Variants", "value": "30+" }]
+        },
+        "limitedOffer": {
+            "enabled": false,
+            "badge": "Limited Time",
+            "title": "Summer Sale",
+            "subtitle": "Up to 50% off",
+            "ctaText": "Shop Now",
+            "ctaLink": "/sale",
+            "image": "",
+            "endsAt": "2026-08-31T23:59:59.000Z"
+        },
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
     }
 }
 ```
-Note: Cached in memory; second read is served from cache until a write invalidates it. Returns 404 with "run the settings seed script" if not seeded.
+Note: Cached in memory; second read is served from cache until a write invalidates it. Returns 404 with "run the settings seed script" if not seeded. See `src/app/modules/settings/docs/settings.json` for the full static default.
 
-### 11.2 PATCH /settings — Update Brand Fields (Admin)
+### 11.2 PATCH /settings — Update Brand (Admin)
 ```text
 PATCH /api/v1/settings
 Authorization: Bearer <admin_token>
 Content-Type: multipart/form-data
 
 Fields:
-  data: { "brandName": "Demo Shop Pro", "tagline": "New tagline", "description": "...", "favicon": "..." }
+  data: { "brand": { "name": "Attor", "tagline": "New tagline", "description": "...", "niche": "clothing", "nicheLabel": "Clothing" } }
   logo: [optional file upload]
+  favicon: [optional file upload]
 ```
 ```json
 // Response 200 OK
 {
     "success": true,
     "message": "Settings updated successfully",
-    "data": { "...": "updated settings object" }
+    "data": { "...": "whole updated settings document" }
 }
 ```
 
@@ -1469,11 +1514,9 @@ Authorization: Bearer <admin_token>
 Content-Type: application/json
 
 {
-    "title": "New Hero Title",
-    "subtitle": "Summer Sale",
-    "backgroundImage": "https://.../hero.jpg",
-    "ctaText": "Shop Now",
-    "ctaLink": "/shop"
+    "slides": [
+        { "image": "/demo/perfume-oil/banner/hero-1.webp", "headline": "New Hero Title", "subtext": "Summer Sale", "ctaText": "Shop Now", "ctaLink": "/shop", "order": 0 }
+    ]
 }
 ```
 ```json
@@ -1481,10 +1524,25 @@ Content-Type: application/json
 {
     "success": true,
     "message": "hero settings updated successfully",
-    "data": { "...": "updated settings object (full document)" }
+    "data": { "...": "whole updated settings document" }
 }
 ```
-Note: Valid sections are `theme`, `hero`, `navbar`, `footer`. Each has its own body schema; unknown section → 400, invalid body → 400. Writes invalidate the cache.
+Note: Valid sections are `theme`, `hero`, `testimonials`, `navbar`, `footer`, `contact`, `about`, `limitedOffer`. Each has its own body schema; unknown section → 400, invalid body → 400. Writes invalidate the cache. Image uploads (multipart `images` field): hero → `slides[i].image`, testimonials → `items[i].avatar`, about/limitedOffer → `image` (positional).
+
+### 11.4 PATCH /settings/preset/:niche — Apply Niche Preset (Admin)
+```text
+PATCH /api/v1/settings/preset/clothing
+Authorization: Bearer <admin_token>
+```
+```json
+// Response 200 OK
+{
+    "success": true,
+    "message": "clothing preset applied successfully",
+    "data": { "...": "whole updated settings document" }
+}
+```
+Note: Valid niches: `clothing`, `perfume_oil`, `eyewear`. Applies brand + hero + about + contact + footer in one write. Unknown → 400.
 
 ---
 
@@ -1498,19 +1556,20 @@ Note: Valid sections are `theme`, `hero`, `navbar`, `footer`. Each has its own b
 | Order | 6 |
 | Meta | 1 |
 | Brand | 5 |
-| Category | 5 |
+| Category | 4 |
 | Coupon | 6 |
 | Review | 5 |
 | Payment | 7 |
-| Settings | 3 |
+| Settings | 4 |
 | **Total** | **54** |
 
 ---
 
 ## QA Notes / Observations
 
-1. **Payment readme mismatch**: `payment.readme.md` documents a `/stripe/validate` route, but the actual route file uses `/stripe/success` and `/stripe/cancel` (both `router.all`). The readme should be updated to match the code.
-2. **Stripe validate requires auth in code?** — `/stripe/success` and `/stripe/cancel` have no `auth` middleware (they are provider/browser callbacks), while `/bkash/validate` and both init routes do require auth. Worth confirming during QA whether bKash validate should be public for callback compatibility.
-3. **Resolved**: Settings readme added (`src/app/modules/settings/settings.readme.md`).
-4. **Resolved**: Settings is now a singleton document with typed sub-schemas (`theme`, `hero`, `navbar`, `footer`) — see §11.
+1. **Resolved**: Payment readme was updated to match the actual code — Stripe uses `/stripe/success` + `/stripe/cancel` callbacks (hosted Checkout, no `/stripe/validate` route), SSL validate is a no-auth `router.all` that always redirects, bKash validate is authenticated and returns JSON.
+2. **Resolved**: `bKash/validate` stays authenticated (admin/customer) — the frontend calls it with the `paymentID` from the bKash callback rather than the gateway calling it directly.
+3. **Resolved**: Settings readme added and expanded to the full singleton document format (9 sections + preset route) — see `src/app/modules/settings/settings.readme.md` and `docs/settings.json`.
+4. **Resolved**: Settings is now a singleton document with typed sub-schemas (`brand`, `theme`, `hero`, `testimonials`, `navbar`, `footer`, `contact`, `about`, `limitedOffer`) — see §11.
 5. When using multer it uploads image first then does validation of creating a product/brand/category or not, and it denies but the photo still is uploaded and on the cloud.
+6. **Resolved**: Order/Payment/Product/Coupon/Brand/Category module readmes synced to the code (currency + FX fields on orders, server-side pricing, `my-orders` route, coupon `by-code` route, brand `description`/single-get, category single-get, `isDeleted` soft-delete semantics).

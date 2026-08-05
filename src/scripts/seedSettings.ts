@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Settings from "../app/modules/settings/settings.model";
 import { SETTINGS_ID } from "../app/modules/settings/settings.constant";
+import { settingsPresets, DEFAULT_NICHE } from "../app/modules/settings/settings.presets";
 import config from "../app/config";
 import dns from "dns";
 
@@ -12,8 +13,13 @@ const seed = async () => {
         const exists = await Settings.findById(SETTINGS_ID);
 
         if (!exists) {
-            await Settings.create({ _id: SETTINGS_ID });
-            console.log("Settings singleton seeded.");
+            await Settings.create({
+                _id: SETTINGS_ID,
+                ...settingsPresets[DEFAULT_NICHE],
+            });
+            console.log(
+                `Settings singleton seeded with "${DEFAULT_NICHE}" preset.`,
+            );
         } else {
             console.log("Settings singleton already exists, skipping.");
         }

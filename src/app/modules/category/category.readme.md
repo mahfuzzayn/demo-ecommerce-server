@@ -5,6 +5,7 @@ The Category module manages product categories with hierarchical support. Catego
 
 ## How It Works
 - **List categories** – Public route, returns active categories with parent reference
+- **Get single category** – Public route, returns one category by id
 - **Create category** – Admin-only, auto-generates slug from name, validates parent if given
 - **Update category** – Admin-only, re-validates name uniqueness and parent reference
 - **Delete category** – Admin-only, prevents deletion if subcategories exist, soft-deletes
@@ -38,6 +39,21 @@ GET /api/v1/category?searchTerm=electronics
             "updatedAt": "2025-01-01T00:00:00.000Z"
         }
     ]
+}
+```
+
+### GET /api/v1/category/:id (Get Single Category)
+**Request:**
+```
+GET /api/v1/category/cat_1
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "message": "Category retrieved successfully",
+    "data": { "...": "same structure as list item above" }
 }
 ```
 

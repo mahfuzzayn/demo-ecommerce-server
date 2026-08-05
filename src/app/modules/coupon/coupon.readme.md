@@ -5,9 +5,10 @@ The Coupon module manages promotional coupon codes. Coupons can offer percentage
 
 ## How It Works
 - **Create coupon** – Admin creates coupons with discount rules
-- **List coupons** – Admin views all coupons with pagination
+- **List coupons** – Admin views all non-deleted coupons (including expired/inactive) with pagination
+- **Get by id** – Admin views a single coupon (no expiry/active check)
 - **Get by code** – Public route to validate a coupon code; checks date range and active status
-- **Update coupon** – Admin updates coupon details
+- **Update coupon** – Admin updates coupon details by id
 - **Delete coupon** – Soft delete (isDeleted flag), coupons are excluded from queries by default
 - Coupons auto-validate their date range upon creation
 
@@ -70,10 +71,11 @@ Authorization: Bearer <admin_token>
 }
 ```
 
-### GET /api/v1/coupon/:couponCode (Get Coupon By Code)
+### GET /api/v1/coupon/:couponId (Get Coupon By Id — Admin)
 **Request:**
 ```
-GET /api/v1/coupon/SAVE20
+GET /api/v1/coupon/coupon_id
+Authorization: Bearer <admin_token>
 ```
 
 **Response:**
@@ -95,11 +97,39 @@ GET /api/v1/coupon/SAVE20
     }
 }
 ```
+Note: Admin single fetch — no expiry/active check; 404 only if missing or soft-deleted.
 
-### PATCH /api/v1/coupon/:couponCode/update-coupon (Update Coupon)
+### GET /api/v1/coupon/by-code/:code (Get Coupon By Code — Public)
 **Request:**
 ```
-PATCH /api/v1/coupon/SAVE20/update-coupon
+GET /api/v1/coupon/by-code/SAVE20
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "message": "Coupon retrieved successfully",
+    "data": {
+        "_id": "coupon_id",
+        "code": "SAVE20",
+        "discountType": "percentage",
+        "discountValue": 20,
+        "minOrderAmount": 500,
+        "maxDiscountAmount": 200,
+        "startDate": "2025-01-01T00:00:00.000Z",
+        "endDate": "2025-12-31T00:00:00.000Z",
+        "isActive": true,
+        "isDeleted": false
+    }
+}
+```
+Note: Checkout validation route. 400 if not yet active, expired, or `isActive: false`.
+
+### PATCH /api/v1/coupon/:couponId (Update Coupon)
+**Request:**
+```
+PATCH /api/v1/coupon/coupon_id
 Authorization: Bearer <admin_token>
 Content-Type: application/json
 
@@ -114,7 +144,7 @@ Content-Type: application/json
 {
     "success": true,
     "message": "Coupon updated successfully",
-    "data": { ... }
+    "data": { "...": "updated coupon object" }
 }
 ```
 
