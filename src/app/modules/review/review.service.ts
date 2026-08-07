@@ -7,6 +7,8 @@ import Product from "../product/product.model";
 import { ReviewSearchableFields } from "./review.constant";
 import { IJwtPayload } from "../auth/auth.interface";
 import { Types } from "mongoose";
+import { ActivityServices } from "../activity/activity.service";
+import { ActivityModule, ActivityType } from "../activity/activity.interface";
 
 // Recalculate a product's averageRating/ratingCount from its non-flagged reviews
 const recalcProductRating = async (productId: Types.ObjectId | string) => {
@@ -119,6 +121,15 @@ const createReview = async (
     // Update product average rating
     await recalcProductRating(review.product);
 
+    await ActivityServices.logActivity({
+        module: ActivityModule.REVIEW,
+        type: ActivityType.CREATE,
+        message: `Review by ${authUser.name} on "${product.name}" was created`,
+        referenceId: review._id.toString(),
+        performedBy: authUser.userId,
+        metadata: { productId: review.product.toString(), rating: review.rating },
+    });
+
     const populatedReview = await Review.findById(review._id)
         .populate("user", "name email photoUrl")
         .populate("product", "name slug");
@@ -135,6 +146,14 @@ const toggleReviewFlag = async (reviewId: string) => {
 
     // Recalculate the product rating so flagged reviews don't count
     await recalcProductRating(review.product);
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.REVIEW,
+        type: ActivityType.STATUS,
+        message: `Review ${review.isFlagged ? "flagged" : "unflagged"}`,
+        referenceId: review._id.toString(),
+        metadata: { isFlagged: review.isFlagged },
+    });
 
     return review;
 };
@@ -156,6 +175,13 @@ const deleteReview = async (reviewId: string) => {
 
     // Recalculate the product rating
     await recalcProductRating(productId);
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.REVIEW,
+        type: ActivityType.DELETE,
+        message: "A review was deleted",
+        referenceId: reviewId,
+    });
 
     return review;
 };

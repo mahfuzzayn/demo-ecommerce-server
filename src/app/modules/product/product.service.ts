@@ -9,6 +9,8 @@ import QueryBuilder from "../../builder/QueryBuilder";
 import { IImageFile } from "../../interface/IImageFile";
 import { generateSlug } from "../../utils/generateSlug";
 import { IJwtPayload } from "../auth/auth.interface";
+import { ActivityServices } from "../activity/activity.service";
+import { ActivityModule, ActivityType } from "../activity/activity.interface";
 
 // Populate reviews (optionally only non-flagged ones) + base refs
 const populateProductRefs = (query: any, nonFlaggedOnly = false) => {
@@ -141,6 +143,15 @@ const createProduct = async (
     const product = new Product(payload);
     const createdProduct = await product.save();
 
+    await ActivityServices.logActivity({
+        module: ActivityModule.PRODUCT,
+        type: ActivityType.CREATE,
+        message: `Product "${createdProduct.name}" was created`,
+        referenceId: createdProduct._id.toString(),
+        performedBy: authUser.userId,
+        metadata: { price: createdProduct.price, currency: createdProduct.currency },
+    });
+
     // Populate references before returning
     const populatedProduct = await populateProductRefs(
         Product.findById(createdProduct._id),
@@ -186,6 +197,13 @@ const updateProduct = async (
         }),
     );
 
+    await ActivityServices.logActivity({
+        module: ActivityModule.PRODUCT,
+        type: ActivityType.UPDATE,
+        message: `Product "${result?.name}" was updated`,
+        referenceId: productId,
+    });
+
     return result;
 };
 
@@ -195,6 +213,13 @@ const deleteProduct = async (productId: string) => {
     product.isDeleted = true;
     product.isActive = false;
     await product.save();
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.PRODUCT,
+        type: ActivityType.DELETE,
+        message: `Product "${product.name}" was deleted`,
+        referenceId: product._id.toString(),
+    });
 
     return product;
 };

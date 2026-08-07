@@ -34,10 +34,16 @@ const orderProductSchema = new Schema(
 
 const orderSchema = new Schema<IOrder, OrderModel>(
     {
+        orderId: {
+            type: String,
+            required: true,
+            unique: true,
+            trim: true,
+        },
         user: {
             type: Schema.Types.ObjectId,
             ref: "User",
-            required: true,
+            default: null,
         },
         products: {
             type: [orderProductSchema],
@@ -84,6 +90,21 @@ const orderSchema = new Schema<IOrder, OrderModel>(
         shippingAddress: {
             type: String,
             required: true,
+        },
+        recipientName: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+        phoneNo: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+        notes: {
+            type: String,
+            default: "",
+            trim: true,
         },
         paymentMethod: {
             type: String,

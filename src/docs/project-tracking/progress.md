@@ -1,10 +1,10 @@
 # Created at: 04/08/2026
-# Updated at: 05/08/2026
+# Updated at: 07/08/2026
 # Completed at: N/A
 
 # Modules Testing
-Total Module: 11
-Total Routes: 54
+Total Module: 12
+Total Routes: 61
 
 Base URL: `http://localhost:5000/api/v1` (all routes are prefixed with `/api/v1`)
 
@@ -443,20 +443,26 @@ Authorization: Bearer <admin_token>
 ---
 
 ## 4. Order Module (Completed ✔)
-**Total Routes: 6**
+**Total Routes: 9**
 
 | # | Route | Method | Description |
 |---|-------|--------|-------------|
 | 1 | `/order` | GET | Get all orders (Admin). Populates user + product. Search/filter/sort/paginate. |
 | 2 | `/order/my-orders` | GET | Get the authenticated customer's own orders. Search/filter/sort/paginate. |
-| 3 | `/order/:orderId` | GET | Get order details (Admin or order owner). Full user + product population. |
-| 4 | `/order` | POST | Create order (Admin/Customer). Server-side pricing, coupon verify, stock decrement in a transaction. |
-| 5 | `/order/:orderId` | PATCH | Update order (Admin or owner). Re-validates products/coupon, recomputes totals; locked once Cancelled/Completed. |
-| 6 | `/order/:orderId/status` | PATCH | Change order status (Admin). Locked once Cancelled/Completed. |
+| 3 | `/order/track-order/:orderId` | GET | Public order tracking by `orderId` (or Mongo `_id`). Delivery + payment insights, status history. |
+| 4 | `/order/:orderId` | GET | Get order details (Admin or order owner). Full user + product population. |
+| 5 | `/order/:orderId/invoice` | GET | Get invoice data (Admin or owner). JSON for react-pdf rendering. **Paid orders only** → else 400. |
+| 6 | `/order` | POST | Create order (**guest checkout — optional auth**). Server-side pricing, coupon verify, stock decrement in a transaction. |
+| 7 | `/order/:orderId` | PATCH | Update order (Admin or owner). Re-validates products/coupon, recomputes totals; locked once Cancelled/Completed. |
+| 8 | `/order/:orderId/status` | PATCH | Change order status (Admin). Locked once Cancelled/Completed. |
 
 Status lifecycle: `Pending` → `Processing` → `Shipped` → `Completed` (or `Cancelled`).
 
+Order identity: every order gets a unique human-friendly `orderId` (`DE{DD}D{MM}M{0001}{U|G}`, e.g. `DE07D08M0001U`; `U` = user, `G` = guest). Guest orders have `user: null`.
+
 Order currency: inherited from the products at creation (`usd`, `bdt`, `eur`, `gbp`, `inr`, `aed`, `aud`, `cad`). All products in an order must share the same currency, else 400. When a payment is charged in a different currency (e.g. BDT order via Stripe), `fxRate` + `fxBaseCurrency` are stored for reconciliation.
+
+Recipient fields: `recipientName` + `phoneNo` required at creation; `notes` optional. All updatable by admin/owner.
 
 ### 4.1 GET /order — Get All Orders (Admin)
 ```text
@@ -1546,6 +1552,22 @@ Note: Valid niches: `clothing`, `perfume_oil`, `eyewear`. Applies brand + hero +
 
 ---
 
+## 12. Activity Module (Completed ✔)
+**Total Routes: 4**
+
+| # | Route | Method | Description |
+|---|-------|--------|-------------|
+| 1 | `/activity` | GET | Get all activities (Admin). QueryBuilder: search/filter/sort/paginate. Newest first. |
+| 2 | `/activity/:activityId` | GET | Get single activity (Admin). 404 if missing. |
+| 3 | `/activity/:activityId/clear` | PATCH | Remove a single activity (Admin). Returns the removed record. |
+| 4 | `/activity/clear` | PATCH | Clear activities (Admin). Body: `{ "clearAll": true }` OR `{ "from", "to" }` date range. Empty body/invalid dates → 400. |
+
+The Activity module is the platform's **audit log**. Every important write across modules (Order, Brand, Category, Product, Review, User, Settings, Coupon, Payment) is logged automatically by the service layer via `ActivityServices.logActivity(...)` — no transaction, fire-and-forget after the main write. Activity shape: `module`, `type` (`create`/`update`/`delete`/`status`/`preset`), `message`, `referenceId`, `reference`, `performedBy`, `metadata`, timestamps. All routes are admin-only; no delete route (clear via the two PATCH routes).
+
+No dedicated test-data section — see `src/app/modules/activity/activity.readme.md` for request/response examples.
+
+---
+
 ## Route Summary
 
 | Module | Total Routes |
@@ -1553,7 +1575,7 @@ Note: Valid niches: `clothing`, `perfume_oil`, `eyewear`. Applies brand + hero +
 | User | 5 |
 | Auth | 6 |
 | Product | 5 |
-| Order | 6 |
+| Order | 9 |
 | Meta | 1 |
 | Brand | 5 |
 | Category | 4 |
@@ -1561,7 +1583,8 @@ Note: Valid niches: `clothing`, `perfume_oil`, `eyewear`. Applies brand + hero +
 | Review | 5 |
 | Payment | 7 |
 | Settings | 4 |
-| **Total** | **54** |
+| Activity | 4 |
+| **Total** | **61** |
 
 ---
 

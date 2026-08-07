@@ -4,6 +4,8 @@ import QueryBuilder from "../../builder/QueryBuilder";
 import { ICoupon, DiscountType } from "./coupon.interface";
 import Coupon from "./coupon.model";
 import { CouponSearchableFields } from "./coupon.constant";
+import { ActivityServices } from "../activity/activity.service";
+import { ActivityModule, ActivityType } from "../activity/activity.interface";
 
 const getAllCoupons = async (query: Record<string, unknown>) => {
     const couponQuery = new QueryBuilder(
@@ -95,6 +97,15 @@ const createCoupon = async (payload: ICoupon) => {
     payload.code = payload.code.toUpperCase();
 
     const coupon = await Coupon.create(payload);
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.COUPON,
+        type: ActivityType.CREATE,
+        message: `Coupon "${coupon.code}" was created`,
+        referenceId: coupon._id.toString(),
+        reference: coupon.code,
+    });
+
     return coupon;
 };
 
@@ -160,6 +171,14 @@ const updateCoupon = async (
         new: true,
     });
 
+    await ActivityServices.logActivity({
+        module: ActivityModule.COUPON,
+        type: ActivityType.UPDATE,
+        message: `Coupon "${result?.code}" was updated`,
+        referenceId: coupon._id.toString(),
+        reference: result?.code,
+    });
+
     return result;
 };
 
@@ -168,6 +187,14 @@ const deleteCoupon = async (couponId: string) => {
 
     coupon.isDeleted = true;
     await coupon.save();
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.COUPON,
+        type: ActivityType.DELETE,
+        message: `Coupon "${coupon.code}" was deleted`,
+        referenceId: coupon._id.toString(),
+        reference: coupon.code,
+    });
 
     return coupon;
 };

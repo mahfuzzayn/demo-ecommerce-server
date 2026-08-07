@@ -6,6 +6,8 @@ import Brand from "./brand.model";
 import { BrandSearchableFields } from "./brand.constant";
 import { IJwtPayload } from "../auth/auth.interface";
 import { IImageFile } from "../../interface/IImageFile";
+import { ActivityServices } from "../activity/activity.service";
+import { ActivityModule, ActivityType } from "../activity/activity.interface";
 
 const getAllBrands = async (query: Record<string, unknown>) => {
     const brandQuery = new QueryBuilder(Brand.find({ isDeleted: false }), query)
@@ -51,6 +53,15 @@ const createBrand = async (
     }
 
     const brand = await Brand.create(payload);
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.BRAND,
+        type: ActivityType.CREATE,
+        message: `Brand "${brand.name}" was created`,
+        referenceId: brand._id.toString(),
+        performedBy: authUser.userId,
+    });
+
     return brand;
 };
 
@@ -76,6 +87,13 @@ const updateBrand = async (
         new: true,
     });
 
+    await ActivityServices.logActivity({
+        module: ActivityModule.BRAND,
+        type: ActivityType.UPDATE,
+        message: `Brand "${result?.name}" was updated`,
+        referenceId: brandId,
+    });
+
     return result;
 };
 
@@ -84,6 +102,13 @@ const deleteBrand = async (brandId: string) => {
 
     brand.isDeleted = true;
     await brand.save();
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.BRAND,
+        type: ActivityType.DELETE,
+        message: `Brand "${brand.name}" was deleted`,
+        referenceId: brand._id.toString(),
+    });
 
     return brand;
 };

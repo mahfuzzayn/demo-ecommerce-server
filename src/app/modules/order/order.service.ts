@@ -10,6 +10,9 @@ import { OrderSearchableFields } from "./order.constant";
 import QueryBuilder from "../../builder/QueryBuilder";
 import { IJwtPayload } from "../auth/auth.interface";
 import mongoose from "mongoose";
+import { generateOrderId } from "../../utils/generateOrderId";
+import { ActivityServices } from "../activity/activity.service";
+import { ActivityModule, ActivityType } from "../activity/activity.interface";
 
 // Validate products (exist, active, not deleted, sufficient stock) and compute
 // the true line totals from the DB prices — client-supplied unitPrice is ignored.
@@ -174,7 +177,10 @@ const getMyOrders = async (
     };
 };
 
-const getOrderDetails = async (orderId: string, authUser: IJwtPayload) => {
+const getOrderDetails = async (
+    orderId: string,
+    authUser: IJwtPayload | undefined,
+) => {
     const order = await Order.findById(orderId)
         .populate("user", "name email")
         .populate("products.product", "name price imageUrls");
@@ -183,18 +189,25 @@ const getOrderDetails = async (orderId: string, authUser: IJwtPayload) => {
         throw new AppError(StatusCodes.NOT_FOUND, "Order not found!");
     }
 
-    // Capture the raw owner id BEFORE it is replaced by the populated user doc
-    const ownerId = (order.user as any)._id?.toString() || order.user.toString();
+    // Admin sees everything; the user who placed the order can see their own.
+    // Guest orders (user: null) have no owner — only admins can view them here.
+    const isAdmin = authUser?.role === "admin";
+    const ownerId = order.user?._id?.toString() || order.user?.toString() || "";
+    const isOwner = Boolean(
+        authUser && ownerId && ownerId === authUser.userId,
+    );
 
-    // Admin sees everything; the user who placed the order can see their own
-    if (authUser.role !== "admin" && ownerId !== authUser.userId) {
+    if (!isAdmin && !isOwner) {
         throw new AppError(StatusCodes.UNAUTHORIZED, "You are not authorized!");
     }
 
     return order;
 };
 
-const createOrder = async (payload: IOrder, authUser: IJwtPayload) => {
+const createOrder = async (
+    payload: IOrder,
+    authUser: IJwtPayload | undefined,
+) => {
     const session = await mongoose.startSession();
 
     try {
@@ -220,9 +233,11 @@ const createOrder = async (payload: IOrder, authUser: IJwtPayload) => {
 
         const finalAmount = totalAmount - discount + deliveryCharge;
 
-        // 3. Build the order with server-computed values
+        // 3. Build the order with server-computed values.
+        //    Guest checkout (no token) → user is null; the orderId suffix marks it G.
         const order = new Order({
-            user: authUser.userId,
+            orderId: await generateOrderId(Boolean(authUser)),
+            user: authUser?.userId ?? null,
             products: priced,
             coupon,
             totalAmount,
@@ -232,6 +247,9 @@ const createOrder = async (payload: IOrder, authUser: IJwtPayload) => {
             currency,
             status: payload.status || undefined,
             shippingAddress: payload.shippingAddress,
+            recipientName: payload.recipientName,
+            phoneNo: payload.phoneNo,
+            notes: payload.notes,
             paymentMethod: payload.paymentMethod,
             paymentStatus: payload.paymentStatus || undefined,
         });
@@ -253,6 +271,20 @@ const createOrder = async (payload: IOrder, authUser: IJwtPayload) => {
             .populate("user", "name email")
             .populate("products.product", "name price imageUrls");
 
+        // Fire-and-forget activity log (not part of the transaction).
+        await ActivityServices.logActivity({
+            module: ActivityModule.ORDER,
+            type: ActivityType.CREATE,
+            message: `Order ${createdOrder.orderId} was created`,
+            referenceId: createdOrder._id.toString(),
+            reference: createdOrder.orderId,
+            performedBy: authUser?.userId,
+            metadata: {
+                finalAmount: createdOrder.finalAmount,
+                isGuest: !authUser,
+            },
+        });
+
         return populatedOrder;
     } catch (error) {
         await session.abortTransaction();
@@ -265,18 +297,21 @@ const createOrder = async (payload: IOrder, authUser: IJwtPayload) => {
 const updateOrder = async (
     orderId: string,
     payload: Partial<IOrder>,
-    authUser: IJwtPayload,
+    authUser: IJwtPayload | undefined,
 ) => {
     const order = await Order.findById(orderId);
     if (!order) {
         throw new AppError(StatusCodes.NOT_FOUND, "Order not found!");
     }
 
-    // Only the owner or an admin can update an order
-    if (
-        authUser.role !== "admin" &&
-        order.user.toString() !== authUser.userId
-    ) {
+    // Only the owner (of a non-guest order) or an admin can update an order.
+    // Guest orders (user: null) can only be updated by an admin.
+    const isAdmin = authUser?.role === "admin";
+    const isOwner = Boolean(
+        authUser && order.user && order.user.toString() === authUser.userId,
+    );
+
+    if (!isAdmin && !isOwner) {
         throw new AppError(StatusCodes.UNAUTHORIZED, "You are not authorized!");
     }
 
@@ -337,6 +372,15 @@ const updateOrder = async (
         if (payload.shippingAddress) {
             order.shippingAddress = payload.shippingAddress;
         }
+        if (payload.recipientName) {
+            order.recipientName = payload.recipientName;
+        }
+        if (payload.phoneNo) {
+            order.phoneNo = payload.phoneNo;
+        }
+        if (payload.notes !== undefined) {
+            order.notes = payload.notes;
+        }
         if (payload.paymentMethod) {
             order.paymentMethod = payload.paymentMethod;
         }
@@ -358,6 +402,19 @@ const updateOrder = async (
             .populate("user", "name email")
             .populate("products.product", "name price imageUrls");
 
+        await ActivityServices.logActivity({
+            module: ActivityModule.ORDER,
+            type: ActivityType.UPDATE,
+            message: `Order ${order.orderId} was updated`,
+            referenceId: order._id.toString(),
+            reference: order.orderId,
+            performedBy: authUser?.userId,
+            metadata: {
+                finalAmount: order.finalAmount,
+                status: order.status,
+            },
+        });
+
         return populatedOrder;
     } catch (error) {
         await session.abortTransaction();
@@ -367,7 +424,11 @@ const updateOrder = async (
     }
 };
 
-const changeOrderStatus = async (orderId: string, status: string) => {
+const changeOrderStatus = async (
+    orderId: string,
+    status: string,
+    authUser?: IJwtPayload,
+) => {
     const order = await Order.checkOrderExist(orderId);
 
     if (order.status === "Cancelled" || order.status === "Completed") {
@@ -377,6 +438,8 @@ const changeOrderStatus = async (orderId: string, status: string) => {
         );
     }
 
+    const previousStatus = order.status;
+
     const updatedOrder = await Order.findByIdAndUpdate(
         orderId,
         { status },
@@ -385,7 +448,136 @@ const changeOrderStatus = async (orderId: string, status: string) => {
         .populate("user", "name email")
         .populate("products.product", "name price imageUrls");
 
+    await ActivityServices.logActivity({
+        module: ActivityModule.ORDER,
+        type: ActivityType.STATUS,
+        message: `Order ${order.orderId} status changed from ${previousStatus} to ${status}`,
+        referenceId: order._id.toString(),
+        reference: order.orderId,
+        performedBy: authUser?.userId,
+        metadata: {
+            previousStatus,
+            newStatus: status,
+        },
+    });
+
     return updatedOrder;
+};
+
+// Public order tracking — no auth. Looks up by orderId (or the Mongo _id).
+// Returns delivery + payment tracking insights for the storefront.
+const trackOrder = async (orderId: string) => {
+    const order = await Order.findOne({
+        $or: [{ orderId }, { _id: orderId }],
+    })
+        .populate("user", "name email")
+        .populate("products.product", "name price imageUrls");
+
+    if (!order) {
+        throw new AppError(StatusCodes.NOT_FOUND, "Order not found!");
+    }
+
+    const products = order.products.map((item: any) => ({
+        productId: item.product?._id?.toString(),
+        name: item.product?.name || "Unknown Product",
+        image: item.product?.imageUrls?.[0] || "",
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: item.unitPrice * item.quantity,
+    }));
+
+    const subtotal = order.totalAmount;
+    const statusHistory = [
+        { status: "Pending", at: order.createdAt },
+        ...(order.status !== "Pending"
+            ? [{ status: order.status, at: order.updatedAt }]
+            : []),
+    ];
+
+    return {
+        orderId: order.orderId,
+        id: order._id,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        paymentMethod: order.paymentMethod,
+        paymentProvider: order.paymentProvider || null,
+        currency: order.currency,
+        totalAmount: subtotal,
+        discount: order.discount,
+        deliveryCharge: order.deliveryCharge,
+        finalAmount: order.finalAmount,
+        recipientName: order.recipientName,
+        phoneNo: order.phoneNo,
+        shippingAddress: order.shippingAddress,
+        notes: order.notes || "",
+        placedBy: order.user ? (order.user as any).name || "User" : "Guest",
+        products,
+        statusHistory,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+    };
+};
+
+// Invoice data for the frontend (rendered via react-pdf). Only a PAID order
+// produces an invoice — unpaid/COD-pending orders are rejected with 400.
+const getInvoiceData = async (orderId: string) => {
+    const order = await Order.findOne({
+        $or: [{ orderId }, { _id: orderId }],
+    })
+        .populate("user", "name email phoneNo address")
+        .populate("products.product", "name price imageUrls");
+
+    if (!order) {
+        throw new AppError(StatusCodes.NOT_FOUND, "Order not found!");
+    }
+
+    if (order.paymentStatus !== "Paid") {
+        throw new AppError(
+            StatusCodes.BAD_REQUEST,
+            "Invoice is only available for paid orders!",
+        );
+    }
+
+    const customer = order.user as any;
+
+    return {
+        orderId: order.orderId,
+        id: order._id,
+        status: order.status,
+        currency: order.currency,
+        issuedAt: order.updatedAt || order.createdAt,
+        customer: {
+            name: customer?.name || order.recipientName,
+            email: customer?.email || "",
+            phoneNo: customer?.phoneNo || order.phoneNo,
+            address: customer?.address || order.shippingAddress,
+        },
+        recipient: {
+            name: order.recipientName,
+            phoneNo: order.phoneNo,
+            shippingAddress: order.shippingAddress,
+            notes: order.notes || "",
+        },
+        payment: {
+            method: order.paymentMethod,
+            provider: order.paymentProvider || null,
+            transactionId: order.transactionId || null,
+        },
+        items: order.products.map((item: any) => ({
+            productId: item.product?._id?.toString(),
+            name: item.product?.name || "Unknown Product",
+            image: item.product?.imageUrls?.[0] || "",
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            total: item.unitPrice * item.quantity,
+        })),
+        totals: {
+            subtotal: order.totalAmount,
+            discount: order.discount,
+            deliveryCharge: order.deliveryCharge,
+            finalAmount: order.finalAmount,
+        },
+    };
 };
 
 export const OrderServices = {
@@ -395,4 +587,6 @@ export const OrderServices = {
     createOrder,
     updateOrder,
     changeOrderStatus,
+    trackOrder,
+    getInvoiceData,
 };

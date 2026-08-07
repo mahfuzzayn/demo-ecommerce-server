@@ -20,6 +20,8 @@ import {
     convertAmount,
 } from "../../utils/currencyConverter";
 import config from "../../config";
+import { ActivityServices } from "../activity/activity.service";
+import { ActivityModule, ActivityType } from "../activity/activity.interface";
 
 // Guard: an already-paid order cannot be re-initialized
 const ensureOrderCanInitPayment = (order: any) => {
@@ -104,6 +106,15 @@ const validateStripePayment = async (body: { sessionId: string }) => {
             order.paymentProvider = PaymentProvider.STRIPE;
             order.transactionId = result.transactionId || body.sessionId;
             await order.save();
+
+            await ActivityServices.logActivity({
+                module: ActivityModule.PAYMENT,
+                type: ActivityType.UPDATE,
+                message: `Order ${order.orderId} was paid via Stripe`,
+                referenceId: order._id.toString(),
+                reference: order.orderId,
+                metadata: { provider: PaymentProvider.STRIPE },
+            });
         }
     }
 
@@ -202,6 +213,15 @@ const validateSSLCommerzPayment = async (body: {
             order.status = "Processing" as any;
             order.paymentProvider = PaymentProvider.SSLCOMMERZ;
             await order.save();
+
+            await ActivityServices.logActivity({
+                module: ActivityModule.PAYMENT,
+                type: ActivityType.UPDATE,
+                message: `Order ${order.orderId} was paid via SSLCommerz`,
+                referenceId: order._id.toString(),
+                reference: order.orderId,
+                metadata: { provider: PaymentProvider.SSLCOMMERZ },
+            });
         }
     }
 
@@ -252,6 +272,15 @@ const validateBkashPayment = async (body: { paymentID: string }) => {
             order.status = "Processing" as any;
             order.paymentProvider = PaymentProvider.BKASH;
             await order.save();
+
+            await ActivityServices.logActivity({
+                module: ActivityModule.PAYMENT,
+                type: ActivityType.UPDATE,
+                message: `Order ${order.orderId} was paid via bKash`,
+                referenceId: order._id.toString(),
+                reference: order.orderId,
+                metadata: { provider: PaymentProvider.BKASH },
+            });
         }
     }
 

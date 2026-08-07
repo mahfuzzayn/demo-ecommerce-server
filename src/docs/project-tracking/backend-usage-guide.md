@@ -20,8 +20,9 @@ This guide explains how to connect a frontend application to the Demo eCommerce 
 - [13. Category Module](#13-category-module)
 - [14. Review Module](#14-review-module)
 - [15. Settings Module](#15-settings-module)
-- [16. Payment Flow Walkthroughs](#16-payment-flow-walkthroughs)
-- [17. Frontend Integration Notes](#17-frontend-integration-notes)
+- [16. Activity Module](#16-activity-module)
+- [17. Payment Flow Walkthroughs](#17-payment-flow-walkthroughs)
+- [18. Frontend Integration Notes](#18-frontend-integration-notes)
 
 ---
 
@@ -712,9 +713,11 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/order`
 
-Order model fields: `user` (ObjectId → User, attached automatically from token), `products[]` (`{product, quantity, unitPrice}`), `coupon`, `totalAmount`, `discount`, `deliveryCharge`, `finalAmount`, `currency`, `status`, `shippingAddress`, `paymentMethod` (`COD` | `Online`), `paymentStatus` (`Pending` | `Paid` | `Failed`), `paymentProvider` (`stripe`/`sslcommerz`/`bkash`), gateway tracking fields (`stripeSessionId`, `sslSessionKey`, `transactionId`), FX fields (`fxRate`, `fxBaseCurrency`), timestamps.
+Order model fields: `orderId` (auto-generated, e.g. `DE07D08M0001U`), `user` (ObjectId → User, or `null` for guest orders), `products[]` (`{product, quantity, unitPrice}`), `coupon`, `totalAmount`, `discount`, `deliveryCharge`, `finalAmount`, `currency`, `status`, `shippingAddress`, `recipientName`, `phoneNo`, `notes` (optional), `paymentMethod` (`COD` | `Online`), `paymentStatus` (`Pending` | `Paid` | `Failed`), `paymentProvider` (`stripe`/`sslcommerz`/`bkash`), gateway tracking fields (`stripeSessionId`, `sslSessionKey`, `transactionId`), FX fields (`fxRate`, `fxBaseCurrency`), timestamps.
 
 **All money fields are computed server-side** — the client never sends `totalAmount`, `discount`, `finalAmount`, or `unitPrice`. `currency` is inherited from the products (all products in an order must share the same currency, else 400).
+
+**Guest checkout:** `POST /order` requires **no auth**. Send a Bearer token to link the order to that user; omit it to order as a guest (`user: null`, orderId suffix `G`).
 
 ### Order status lifecycle
 
@@ -808,14 +811,14 @@ Authorization: Bearer <accessToken>
 }
 ```
 
-### 8.4 POST /api/v1/order — Create order
+### 8.4 POST /api/v1/order — Create order (guest checkout)
 
-Protected — `admin`, `customer`. The authenticated user is attached as the order owner automatically. Each product is validated (exists, not deleted, active, sufficient stock, same currency); stock is **decremented** on order creation inside a transaction.
+**No auth required** — optional `Authorization` header. If a valid Bearer token is present the order is linked to that user (`orderId` suffix `U`); without a token it's a **guest order** (`user: null`, suffix `G`). Each product is validated (exists, not deleted, active, sufficient stock, same currency); stock is **decremented** on order creation inside a transaction.
 
 **Request:**
 ```
 POST /api/v1/order
-Authorization: Bearer <accessToken>
+Authorization: Bearer <accessToken>   // OPTIONAL — omit for guest checkout
 Content-Type: application/json
 
 {
@@ -825,6 +828,9 @@ Content-Type: application/json
   "coupon": "SAVE20",
   "deliveryCharge": 50,
   "shippingAddress": "123 Main Street, Dhaka",
+  "recipientName": "John Doe",
+  "phoneNo": "+1 (555) 123-4567",
+  "notes": "Please call before delivery",
   "paymentMethod": "Online"
 }
 ```
@@ -833,8 +839,10 @@ Content-Type: application/json
 - `coupon` — optional string (verified: exists, active, in date range, meets min order).
 - `deliveryCharge` — optional number, must be ≥ 0.
 - `shippingAddress` — required string.
+- `recipientName`, `phoneNo` — **required** strings (delivery recipient).
+- `notes` — optional string.
 - `paymentMethod` — `"COD"` or `"Online"`.
-- **Do not send** `totalAmount`, `discount`, `finalAmount`, `unitPrice`, `currency`, `user` — all computed/attached server-side.
+- **Do not send** `totalAmount`, `discount`, `finalAmount`, `unitPrice`, `currency`, `user`, `orderId` — all computed/attached server-side.
 
 **Response (201):**
 ```json
@@ -843,6 +851,7 @@ Content-Type: application/json
   "message": "Order created successfully",
   "data": {
     "_id": "666a1a2b3c4d5e6f7a8b9c0d",
+    "orderId": "DE07D08M0001U",
     "user": { "_id": "664f...", "name": "John Doe", "email": "customer@example.com" },
     "products": [{ "product": { "_id": "664f1a2b...", "name": "Smartphone X" }, "quantity": 2, "unitPrice": 799.99 }],
     "coupon": "SAVE20",
@@ -853,6 +862,9 @@ Content-Type: application/json
     "currency": "usd",
     "status": "Pending",
     "shippingAddress": "123 Main Street, Dhaka",
+    "recipientName": "John Doe",
+    "phoneNo": "+1 (555) 123-4567",
+    "notes": "Please call before delivery",
     "paymentMethod": "Online",
     "paymentStatus": "Pending",
     "createdAt": "2026-07-15T10:00:00.000Z",
@@ -863,7 +875,83 @@ Content-Type: application/json
 
 **Errors:** 404 "Product with ID X not found!" / 400 "Product ... is not available!" / 400 "Insufficient stock for ... Available: N" / 400 "All products in an order must have the same currency!" / 400 "Coupon has expired!" etc.
 
-### 8.5 PATCH /api/v1/order/:orderId — Update order
+### 8.5 GET /api/v1/order/track-order/:orderId — Track order (public)
+
+Public — no auth. Looks up by the human-friendly `orderId` (e.g. `DE07D08M0001U`) or the Mongo `_id`. Returns delivery + payment tracking insights for a "track your order" page.
+
+**Request:**
+```
+GET /api/v1/order/track-order/DE07D08M0001U
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Order tracking details retrieved successfully",
+  "data": {
+    "orderId": "DE07D08M0001U",
+    "id": "666a1a2b3c4d5e6f7a8b9c0d",
+    "status": "Processing",
+    "paymentStatus": "Paid",
+    "paymentMethod": "Online",
+    "paymentProvider": "stripe",
+    "currency": "usd",
+    "totalAmount": 1599.98,
+    "discount": 0,
+    "deliveryCharge": 50,
+    "finalAmount": 1649.98,
+    "recipientName": "John Doe",
+    "phoneNo": "+1 (555) 123-4567",
+    "shippingAddress": "123 Main Street, Dhaka",
+    "notes": "Please call before delivery",
+    "placedBy": "John Doe",
+    "products": [
+      { "productId": "664f1a2b...", "name": "Smartphone X", "image": "https://...", "quantity": 2, "unitPrice": 799.99, "total": 1599.98 }
+    ],
+    "statusHistory": [
+      { "status": "Pending", "at": "2026-07-15T10:00:00.000Z" },
+      { "status": "Processing", "at": "2026-07-16T10:00:00.000Z" }
+    ],
+    "createdAt": "2026-07-15T10:00:00.000Z",
+    "updatedAt": "2026-07-16T10:00:00.000Z"
+  }
+}
+```
+
+### 8.6 GET /api/v1/order/:orderId/invoice — Get order invoice
+
+Protected — `admin`, `customer` (owner). Returns invoice data as JSON for the frontend to render with react-pdf and a download button. **400 unless the order is `Paid`.**
+
+**Request:**
+```
+GET /api/v1/order/DE07D08M0001U/invoice
+Authorization: Bearer <accessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Order invoice retrieved successfully",
+  "data": {
+    "orderId": "DE07D08M0001U",
+    "id": "666a1a2b3c4d5e6f7a8b9c0d",
+    "status": "Processing",
+    "currency": "usd",
+    "issuedAt": "2026-07-16T10:00:00.000Z",
+    "customer": { "name": "John Doe", "email": "customer@example.com", "phoneNo": "+1 (555) 123-4567", "address": "123 Main Street, Dhaka" },
+    "recipient": { "name": "John Doe", "phoneNo": "+1 (555) 123-4567", "shippingAddress": "123 Main Street, Dhaka", "notes": "" },
+    "payment": { "method": "Online", "provider": "stripe", "transactionId": "cs_test_abc123..." },
+    "items": [
+      { "productId": "664f1a2b...", "name": "Smartphone X", "image": "https://...", "quantity": 2, "unitPrice": 799.99, "total": 1599.98 }
+    ],
+    "totals": { "subtotal": 1599.98, "discount": 0, "deliveryCharge": 50, "finalAmount": 1649.98 }
+  }
+}
+```
+
+### 8.7 PATCH /api/v1/order/:orderId — Update order
 
 Protected — `admin`, `customer`. **Ownership is enforced** (admin or owner). Re-validates + re-prices the product list (restores old stock, decrements new quantities in a transaction), re-verifies coupon, recomputes `finalAmount` and `currency`. Locked once `Completed`/`Cancelled`.
 
@@ -892,7 +980,7 @@ Content-Type: application/json
 
 **Errors:** 401 (not owner/admin), 400 "Cannot modify a completed/cancelled order!"
 
-### 8.6 PATCH /api/v1/order/:orderId/status — Change order status
+### 8.8 PATCH /api/v1/order/:orderId/status — Change order status
 
 Protected — `admin`.
 
@@ -1845,7 +1933,80 @@ Authorization: Bearer <adminAccessToken>
 
 ---
 
-## 16. Payment Flow Walkthroughs
+## 16. Activity Module
+
+Parent route: `/api/v1/activity`
+
+The Activity module is the platform's **audit log**. Every important write across the modules (orders, brands, categories, products, reviews, users, coupons, payments, settings) is recorded automatically by the service layer — the frontend does not send anything to create activities. Admins can read and clear the log.
+
+### 16.1 GET /api/v1/activity — Get all activities
+
+Protected — `admin`. Newest first.
+
+**Query params:** `searchTerm` (searches `module`, `type`, `message`, `reference`), `page`, `limit`, `sort`, `fields`, plus filters: `module`, `type`, `performedBy`, `reference`.
+
+**Request:**
+```
+GET /api/v1/activity?module=Order&type=create&page=1&limit=10
+Authorization: Bearer <adminAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Activities retrieved successfully",
+  "meta": { "page": 1, "limit": 10, "total": 12, "totalPage": 2 },
+  "data": [
+    {
+      "_id": "668a1a2b3c4d5e6f7a8b9c0d",
+      "module": "Order",
+      "type": "create",
+      "message": "Order DE07D08M0001U was created",
+      "referenceId": "666a1a2b3c4d5e6f7a8b9c0d",
+      "reference": "DE07D08M0001U",
+      "performedBy": "664f1a2b3c4d5e6f7a8b9c0d",
+      "metadata": { "finalAmount": 1649.98, "isGuest": false },
+      "createdAt": "2026-08-07T10:00:00.000Z",
+      "updatedAt": "2026-08-07T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+`module` is one of `Order` | `Brand` | `Category` | `Product` | `Review` | `User` | `Settings` | `Coupon` | `Payment`. `type` is one of `create` | `update` | `delete` | `status` | `preset`.
+
+### 16.2 GET /api/v1/activity/:activityId — Get single activity
+
+Protected — `admin`. 404 if not found.
+
+### 16.3 PATCH /api/v1/activity/:activityId/clear — Clear a single activity
+
+Protected — `admin`. Removes one activity record and returns it.
+
+### 16.4 PATCH /api/v1/activity/clear — Clear activities
+
+Protected — `admin`. Two modes in the JSON body:
+
+```
+{ "clearAll": true }                          // delete everything
+{ "from": "2026-08-01T00:00:00.000Z", "to": "2026-08-07T23:59:59.999Z" }  // date range (inclusive on createdAt)
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Activities cleared successfully",
+  "data": { "deletedCount": 12 }
+}
+```
+
+An empty body or invalid dates → 400.
+
+---
+
+## 17. Payment Flow Walkthroughs
 
 ### Stripe (recommended for international payments)
 
@@ -1901,15 +2062,15 @@ The backend redirects the browser to:
 
 ---
 
-## 17. Frontend Integration Notes
+## 18. Frontend Integration Notes
 
-### 17.1 Setting up an API client
+### 18.1 Setting up an API client
 
 - **Base URL**: `http://localhost:3001/api/v1` (dev). In production use the deployed server URL.
 - **With credentials**: use `credentials: "include"` (or `withCredentials: true` in Axios) so the `refreshToken` cookie is sent with `/auth/refresh-token`.
 - **CORS**: the server currently allows only `http://localhost:3000`. In production the server's CORS origin must be updated to the deployed frontend URL.
 
-### 17.2 Authorization header helper
+### 18.2 Authorization header helper
 
 ```
 Authorization: Bearer <accessToken>
@@ -1917,7 +2078,7 @@ Authorization: Bearer <accessToken>
 
 Store the access token after login/register/refresh and attach it to every request to a protected endpoint. On a 401 response, attempt a refresh (`POST /auth/refresh-token`), then retry the original request once.
 
-### 17.3 Multipart uploads (create/update with files)
+### 18.3 Multipart uploads (create/update with files)
 
 These endpoints require `multipart/form-data` with the JSON payload **inside a `data` field**:
 
@@ -1948,16 +2109,16 @@ const res = await fetch(`${BASE}/brand`, {
 
 > Do **not** manually set `Content-Type: multipart/form-data` — the browser adds the boundary automatically. If the `data` field is missing, the server responds 400 "Please provide data in the body under data key".
 
-### 17.4 Response parsing
+### 18.4 Response parsing
 
 - Check `success`. If `false`, show `message` (and optionally `errorSources[].message` per field).
 - On list endpoints, use `meta` (`page`, `limit`, `total`, `totalPage`) for pagination UI.
 
-### 17.5 Role-based UI
+### 18.5 Role-based UI
 
 Guard admin UI (dashboard, product/brand/category/coupon creation, order status changes, user management) behind role `admin`. The access token is a JWT — decode its payload to read `{ userId, name, email, role, isActive }`.
 
-### 17.6 Populated references
+### 18.6 Populated references
 
 Product/category/brand/review/order responses contain **populated embedded objects** instead of raw IDs for some fields:
 
@@ -1968,16 +2129,18 @@ Product/category/brand/review/order responses contain **populated embedded objec
 
 When sending these fields (e.g. `category` on product create), send the **plain ObjectId string**, not the populated object.
 
-### 17.7 Typical customer flow to implement
+### 18.7 Typical customer flow to implement
 
 1. Browse: `GET /product` (with filters) → product detail `GET /product/:id` → reviews `GET /review?product=<id>`
 2. Validate coupon at checkout: `GET /coupon/by-code/<CODE>`
-3. Create order: `POST /order` (paymentMethod `"COD"` or `"Online"`)
+3. Create order: `POST /order` (paymentMethod `"COD"` or `"Online"`) — **no token required** (guest checkout); send the token if the user is logged in
 4. Pay online: call the provider init endpoint → redirect to `gatewayUrl`
 5. Handle redirect back on `/payment/success` / `/payment/failed`
 6. View orders: `GET /order/my-orders`
+7. Track an order (public, guests too): `GET /order/track-order/<orderId>`
+8. Download invoice (paid orders): `GET /order/<orderId>/invoice`
 
-### 17.8 Typical admin flow to implement
+### 18.8 Typical admin flow to implement
 
 1. Login as admin → `GET /user` (manage users), `PATCH /user/:id/status`
 2. Manage catalog: CRUD `category`, `brand`, `product` (multipart)
@@ -1986,6 +2149,7 @@ When sending these fields (e.g. `category` on product create), send the **plain 
 5. Dashboard: `GET /meta`
 6. Moderate reviews: `GET /review?isFlagged=true`
 7. Manage storefront: `GET /settings`, `PATCH /settings/:section`, `PATCH /settings/preset/:niche`
+8. Audit log: `GET /activity`, `PATCH /activity/clear`
 
 ---
 
@@ -2011,40 +2175,46 @@ When sending these fields (e.g. `category` on product create), send the **plain 
 | 16 | DELETE | `/api/v1/product/:productId` | admin | – |
 | 17 | GET | `/api/v1/order` | admin | – |
 | 18 | GET | `/api/v1/order/my-orders` | customer | – |
-| 19 | GET | `/api/v1/order/:orderId` | admin, customer (owner) | – |
-| 20 | POST | `/api/v1/order` | admin, customer | – |
-| 21 | PATCH | `/api/v1/order/:orderId` | admin, customer (owner) | – |
-| 22 | PATCH | `/api/v1/order/:orderId/status` | admin | – |
-| 23 | POST | `/api/v1/payment/:orderId/stripe/init` | admin, customer | – |
-| 24 | GET/POST | `/api/v1/payment/stripe/success` | – (callback, redirects to frontend) | – |
-| 25 | GET/POST | `/api/v1/payment/stripe/cancel` | – (callback, redirects to frontend) | – |
-| 26 | POST | `/api/v1/payment/:orderId/sslcommerz/init` | admin, customer | – |
-| 27 | GET/POST | `/api/v1/payment/sslcommerz/validate` | – (callback, always redirects) | – |
-| 28 | POST | `/api/v1/payment/:orderId/bkash/init` | admin, customer | – |
-| 29 | POST | `/api/v1/payment/bkash/validate` | admin, customer | – |
-| 30 | GET | `/api/v1/meta` | admin | – |
-| 31 | GET | `/api/v1/brand` | – | – |
-| 32 | GET | `/api/v1/brand/:id` | – | – |
-| 33 | POST | `/api/v1/brand` | admin | ✅ `data` + `logo` |
-| 34 | PATCH | `/api/v1/brand/:id` | admin | ✅ `data` + `logo` |
-| 35 | DELETE | `/api/v1/brand/:id` | admin | – |
-| 36 | POST | `/api/v1/coupon` | admin | – |
-| 37 | GET | `/api/v1/coupon` | admin | – |
-| 38 | GET | `/api/v1/coupon/:couponId` | admin | – |
-| 39 | GET | `/api/v1/coupon/by-code/:code` | – | – |
-| 40 | PATCH | `/api/v1/coupon/:couponId` | admin | – |
-| 41 | DELETE | `/api/v1/coupon/:couponId` | admin | – |
-| 42 | GET | `/api/v1/category` | – | – |
-| 43 | GET | `/api/v1/category/:id` | – | – |
-| 44 | POST | `/api/v1/category` | admin | ✅ `data` + `icon` |
-| 45 | PATCH | `/api/v1/category/:id` | admin | ✅ `data` + `icon` |
-| 46 | DELETE | `/api/v1/category/:id` | admin | – |
-| 47 | GET | `/api/v1/review` | – | – |
-| 48 | GET | `/api/v1/review/:reviewId` | – | – |
-| 49 | POST | `/api/v1/review` | customer | – |
-| 50 | PATCH | `/api/v1/review/:reviewId/status` | admin | – |
-| 51 | DELETE | `/api/v1/review/:reviewId` | admin | – |
-| 52 | GET | `/api/v1/settings` | – | – |
-| 53 | PATCH | `/api/v1/settings` | admin | ✅ `data` + `logo` + `favicon` |
-| 54 | PATCH | `/api/v1/settings/:section` | admin | ✅ `data` + `images` (hero/testimonials/about/limitedOffer) |
-| 55 | PATCH | `/api/v1/settings/preset/:niche` | admin | – |
+| 19 | GET | `/api/v1/order/track-order/:orderId` | – (public) | – |
+| 20 | GET | `/api/v1/order/:orderId` | admin, customer (owner) | – |
+| 21 | GET | `/api/v1/order/:orderId/invoice` | admin, customer (owner); paid only | – |
+| 22 | POST | `/api/v1/order` | – (guest checkout, optional auth) | – |
+| 23 | PATCH | `/api/v1/order/:orderId` | admin, customer (owner) | – |
+| 24 | PATCH | `/api/v1/order/:orderId/status` | admin | – |
+| 25 | POST | `/api/v1/payment/:orderId/stripe/init` | admin, customer | – |
+| 26 | GET/POST | `/api/v1/payment/stripe/success` | – (callback, redirects to frontend) | – |
+| 27 | GET/POST | `/api/v1/payment/stripe/cancel` | – (callback, redirects to frontend) | – |
+| 28 | POST | `/api/v1/payment/:orderId/sslcommerz/init` | admin, customer | – |
+| 29 | GET/POST | `/api/v1/payment/sslcommerz/validate` | – (callback, always redirects) | – |
+| 30 | POST | `/api/v1/payment/:orderId/bkash/init` | admin, customer | – |
+| 31 | POST | `/api/v1/payment/bkash/validate` | admin, customer | – |
+| 32 | GET | `/api/v1/meta` | admin | – |
+| 33 | GET | `/api/v1/brand` | – | – |
+| 34 | GET | `/api/v1/brand/:id` | – | – |
+| 35 | POST | `/api/v1/brand` | admin | ✅ `data` + `logo` |
+| 36 | PATCH | `/api/v1/brand/:id` | admin | ✅ `data` + `logo` |
+| 37 | DELETE | `/api/v1/brand/:id` | admin | – |
+| 38 | POST | `/api/v1/coupon` | admin | – |
+| 39 | GET | `/api/v1/coupon` | admin | – |
+| 40 | GET | `/api/v1/coupon/:couponId` | admin | – |
+| 41 | GET | `/api/v1/coupon/by-code/:code` | – | – |
+| 42 | PATCH | `/api/v1/coupon/:couponId` | admin | – |
+| 43 | DELETE | `/api/v1/coupon/:couponId` | admin | – |
+| 44 | GET | `/api/v1/category` | – | – |
+| 45 | GET | `/api/v1/category/:id` | – | – |
+| 46 | POST | `/api/v1/category` | admin | ✅ `data` + `icon` |
+| 47 | PATCH | `/api/v1/category/:id` | admin | ✅ `data` + `icon` |
+| 48 | DELETE | `/api/v1/category/:id` | admin | – |
+| 49 | GET | `/api/v1/review` | – | – |
+| 50 | GET | `/api/v1/review/:reviewId` | – | – |
+| 51 | POST | `/api/v1/review` | customer | – |
+| 52 | PATCH | `/api/v1/review/:reviewId/status` | admin | – |
+| 53 | DELETE | `/api/v1/review/:reviewId` | admin | – |
+| 54 | GET | `/api/v1/settings` | – | – |
+| 55 | PATCH | `/api/v1/settings` | admin | ✅ `data` + `logo` + `favicon` |
+| 56 | PATCH | `/api/v1/settings/:section` | admin | ✅ `data` + `images` (hero/testimonials/about/limitedOffer) |
+| 57 | PATCH | `/api/v1/settings/preset/:niche` | admin | – |
+| 58 | GET | `/api/v1/activity` | admin | – |
+| 59 | GET | `/api/v1/activity/:activityId` | admin | – |
+| 60 | PATCH | `/api/v1/activity/:activityId/clear` | admin | – |
+| 61 | PATCH | `/api/v1/activity/clear` | admin | – |

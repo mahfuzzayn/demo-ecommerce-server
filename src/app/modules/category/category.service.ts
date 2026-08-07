@@ -7,6 +7,8 @@ import { CategorySearchableFields } from "./category.constant";
 import { IJwtPayload } from "../auth/auth.interface";
 import { IImageFile } from "../../interface/IImageFile";
 import { generateSlug } from "../../utils/generateSlug";
+import { ActivityServices } from "../activity/activity.service";
+import { ActivityModule, ActivityType } from "../activity/activity.interface";
 
 const getAllCategories = async (query: Record<string, unknown>) => {
     const categoryQuery = new QueryBuilder(
@@ -86,6 +88,15 @@ const createCategory = async (
     }
 
     const category = await Category.create(payload);
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.CATEGORY,
+        type: ActivityType.CREATE,
+        message: `Category "${category.name}" was created`,
+        referenceId: category._id.toString(),
+        performedBy: authUser.userId,
+    });
+
     return category;
 };
 
@@ -135,6 +146,13 @@ const updateCategory = async (
         new: true,
     }).populate("parent", "name slug");
 
+    await ActivityServices.logActivity({
+        module: ActivityModule.CATEGORY,
+        type: ActivityType.UPDATE,
+        message: `Category "${result?.name}" was updated`,
+        referenceId: categoryId,
+    });
+
     return result;
 };
 
@@ -153,6 +171,13 @@ const deleteCategory = async (categoryId: string) => {
     category.isDeleted = true;
     category.isActive = false;
     await category.save();
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.CATEGORY,
+        type: ActivityType.DELETE,
+        message: `Category "${category.name}" was deleted`,
+        referenceId: category._id.toString(),
+    });
 
     return category;
 };

@@ -50,13 +50,37 @@ const getOrderDetails = catchAsync(async (req: Request, res: Response) => {
 const createOrder = catchAsync(async (req: Request, res: Response) => {
     const result = await OrderServices.createOrder(
         req.body,
-        req.user as IJwtPayload,
+        req.user as IJwtPayload | undefined,
     );
 
     sendResponse(res, {
         statusCode: StatusCodes.CREATED,
         success: true,
         message: "Order created successfully",
+        data: result,
+    });
+});
+
+const trackOrder = catchAsync(async (req: Request, res: Response) => {
+    const { orderId } = req.params;
+    const result = await OrderServices.trackOrder(orderId as string);
+
+    sendResponse(res, {
+        statusCode: StatusCodes.OK,
+        success: true,
+        message: "Order tracking details retrieved successfully",
+        data: result,
+    });
+});
+
+const getInvoiceData = catchAsync(async (req: Request, res: Response) => {
+    const { orderId } = req.params;
+    const result = await OrderServices.getInvoiceData(orderId as string);
+
+    sendResponse(res, {
+        statusCode: StatusCodes.OK,
+        success: true,
+        message: "Order invoice retrieved successfully",
         data: result,
     });
 });
@@ -83,6 +107,7 @@ const changeOrderStatus = catchAsync(async (req: Request, res: Response) => {
     const result = await OrderServices.changeOrderStatus(
         orderId as string,
         status,
+        req.user as IJwtPayload | undefined,
     );
 
     sendResponse(res, {
@@ -100,4 +125,6 @@ export const OrderController = {
     createOrder,
     updateOrder,
     changeOrderStatus,
+    trackOrder,
+    getInvoiceData,
 };

@@ -8,6 +8,8 @@ import { IImageFile } from "../../interface/IImageFile";
 import { AuthService } from "../auth/auth.service";
 import QueryBuilder from "../../builder/QueryBuilder";
 import { IJwtPayload } from "../auth/auth.interface";
+import { ActivityServices } from "../activity/activity.service";
+import { ActivityModule, ActivityType } from "../activity/activity.interface";
 
 // Function to register user
 const registerUser = async (userData: IUser) => {
@@ -39,6 +41,14 @@ const registerUser = async (userData: IUser) => {
         const createdUser = await user.save({ session });
 
         await session.commitTransaction();
+
+        await ActivityServices.logActivity({
+            module: ActivityModule.USER,
+            type: ActivityType.CREATE,
+            message: `User "${createdUser.name}" (${createdUser.email}) registered`,
+            referenceId: createdUser._id.toString(),
+            performedBy: createdUser._id.toString(),
+        });
 
         return await AuthService.loginUser({
             email: createdUser.email,
@@ -115,6 +125,14 @@ const updateProfile = async (
         },
     );
 
+    await ActivityServices.logActivity({
+        module: ActivityModule.USER,
+        type: ActivityType.UPDATE,
+        message: `User "${result?.name}" updated their profile`,
+        referenceId: authUser.userId,
+        performedBy: authUser.userId,
+    });
+
     return result;
 };
 
@@ -127,6 +145,15 @@ const updateUserStatus = async (userId: string) => {
 
     user.isActive = !user.isActive;
     const updatedUser = await user.save();
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.USER,
+        type: ActivityType.STATUS,
+        message: `User "${user.name}" is now ${user.isActive ? "active" : "inactive"}`,
+        referenceId: user._id.toString(),
+        metadata: { isActive: user.isActive },
+    });
+
     return updatedUser;
 };
 

@@ -5,6 +5,8 @@ import { ISettings } from "./settings.interface";
 import { SETTINGS_ID, SettingsSection } from "./settings.constant";
 import { settingsCache } from "./settings.cache";
 import { settingsPresets, DEFAULT_NICHE } from "./settings.presets";
+import { ActivityServices } from "../activity/activity.service";
+import { ActivityModule, ActivityType } from "../activity/activity.interface";
 
 const getSettings = async (): Promise<ISettings> => {
     const cached = settingsCache.get();
@@ -79,6 +81,13 @@ const updateSection = async <K extends SettingsSection>(
 
     settingsCache.invalidate();
 
+    await ActivityServices.logActivity({
+        module: ActivityModule.SETTINGS,
+        type: ActivityType.UPDATE,
+        message: `Settings section "${section}" was updated`,
+        metadata: { section },
+    });
+
     return updated.toObject();
 };
 
@@ -111,6 +120,12 @@ const updateBrandFields = async (
 
     settingsCache.invalidate();
 
+    await ActivityServices.logActivity({
+        module: ActivityModule.SETTINGS,
+        type: ActivityType.UPDATE,
+        message: "Brand settings were updated",
+    });
+
     return updated.toObject();
 };
 
@@ -139,6 +154,13 @@ const applyNichePreset = async (niche: string) => {
     }
 
     settingsCache.invalidate();
+
+    await ActivityServices.logActivity({
+        module: ActivityModule.SETTINGS,
+        type: ActivityType.PRESET,
+        message: `"${niche}" niche preset was applied`,
+        metadata: { niche },
+    });
 
     return updated.toObject();
 };

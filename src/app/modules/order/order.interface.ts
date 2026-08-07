@@ -33,7 +33,11 @@ export interface IOrderProduct {
 
 // Order Schema Definition
 export interface IOrder extends Document {
-    user: Types.ObjectId;
+    // Human-friendly order reference: "DE07D08M0001U" (U = user, G = guest).
+    // Unique, auto-generated at creation.
+    orderId: string;
+    // Null when the order was placed as a guest (no auth).
+    user: Types.ObjectId | null;
     products: IOrderProduct[];
     coupon?: string | null;
     totalAmount: number;
@@ -43,6 +47,11 @@ export interface IOrder extends Document {
     currency: Currency;
     status: OrderStatus;
     shippingAddress: string;
+    // Recipient details — required for delivery (can be filled by admin or user).
+    recipientName: string;
+    phoneNo: string;
+    // Optional note attached to the order (filled by admin or user when ordering).
+    notes?: string;
     paymentMethod: PaymentMethod;
     paymentStatus: PaymentStatus;
     paymentProvider?: PaymentProvider;

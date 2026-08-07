@@ -16,6 +16,13 @@ const createOrderValidationSchema = z.object({
         shippingAddress: z
             .string()
             .min(1, "Shipping address is required"),
+        recipientName: z
+            .string()
+            .min(1, "Recipient name is required"),
+        phoneNo: z
+            .string()
+            .min(1, "Phone number is required"),
+        notes: z.string().optional(),
         paymentMethod: z.nativeEnum(PaymentMethod, {
             errorMap: () => ({ message: "Invalid payment method" }),
         }),
@@ -28,6 +35,9 @@ const updateOrderValidationSchema = z.object({
         coupon: z.string().nullable().optional(),
         deliveryCharge: z.number().min(0).optional(),
         shippingAddress: z.string().min(1).optional(),
+        recipientName: z.string().min(1).optional(),
+        phoneNo: z.string().min(1).optional(),
+        notes: z.string().optional(),
         paymentMethod: z
             .nativeEnum(PaymentMethod, {
                 errorMap: () => ({ message: "Invalid payment method" }),

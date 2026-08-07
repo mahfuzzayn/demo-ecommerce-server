@@ -13,7 +13,8 @@
       "Shell(.node_modules.bintsc:*)",
       "Shell(npx --package typescript@5.7.2 tsc --noEmit 2 >& 1)",
       "Shell(findstr:*)",
-      "Shell(npx tsc --noEmit)"
+      "Shell(npx tsc --noEmit)",
+      "Shell(powershell -NoProfile -Command \"(Get-Content 'src\\docs\\project-tracking\\backend-usage-guide.md' -Raw) -replace '### 17\\.', '### 18.' | Set-Content 'src\\docs\\project-tracking\\backend-usage-guide.md' -NoNewline\")"
     ],
     "deny": [],
     "defaultMode": "default"

@@ -235,6 +235,8 @@ export const sslCommerzInit = async (
 
         const result = await sslcz.init(initData);
 
+        console.log(result);
+
         if (result && result.GatewayPageURL) {
             return {
                 success: true,
