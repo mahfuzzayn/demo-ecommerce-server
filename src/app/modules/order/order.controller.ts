@@ -75,7 +75,8 @@ const trackOrder = catchAsync(async (req: Request, res: Response) => {
 
 const getInvoiceData = catchAsync(async (req: Request, res: Response) => {
     const { orderId } = req.params;
-    const result = await OrderServices.getInvoiceData(orderId as string);
+    const by = req.query.by as string | undefined;
+    const result = await OrderServices.getInvoiceData(orderId as string, by);
 
     sendResponse(res, {
         statusCode: StatusCodes.OK,

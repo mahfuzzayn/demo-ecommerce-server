@@ -13,6 +13,7 @@ import mongoose from "mongoose";
 import { generateOrderId } from "../../utils/generateOrderId";
 import { ActivityServices } from "../activity/activity.service";
 import { ActivityModule, ActivityType } from "../activity/activity.interface";
+import { resolveDeliveryCharge } from "./order.utils";
 
 // Validate products (exist, active, not deleted, sufficient stock) and compute
 // the true line totals from the DB prices — client-supplied unitPrice is ignored.
@@ -223,26 +224,31 @@ const createOrder = async (
             totalAmount,
         );
 
-        const deliveryCharge = payload.deliveryCharge || 0;
-        if (deliveryCharge < 0) {
+        // 3. Resolve the delivery charge from the selected option name —
+        //    the customer never sends an amount, only the option name.
+        const deliveryOptionName = payload.deliveryOptionName;
+        if (!deliveryOptionName) {
             throw new AppError(
                 StatusCodes.BAD_REQUEST,
-                "Delivery charge cannot be negative!",
+                "A delivery option is required!",
             );
         }
+        const deliveryCharge = await resolveDeliveryCharge(deliveryOptionName);
 
         const finalAmount = totalAmount - discount + deliveryCharge;
 
-        // 3. Build the order with server-computed values.
-        //    Guest checkout (no token) → user is null; the orderId suffix marks it G.
+        // 4. Build the order with server-computed values.
+        //    Guest checkout (no token) → user is null. The orderId is a random
+        //    DEXXXXXXXX — unguessable, no date/sequence encoded.
         const order = new Order({
-            orderId: await generateOrderId(Boolean(authUser)),
+            orderId: await generateOrderId(),
             user: authUser?.userId ?? null,
             products: priced,
             coupon,
             totalAmount,
             discount,
             deliveryCharge,
+            deliveryOptionName,
             finalAmount,
             currency,
             status: payload.status || undefined,
@@ -356,14 +362,11 @@ const updateOrder = async (
             order.discount = discount;
         }
 
-        if (payload.deliveryCharge !== undefined) {
-            if (payload.deliveryCharge < 0) {
-                throw new AppError(
-                    StatusCodes.BAD_REQUEST,
-                    "Delivery charge cannot be negative!",
-                );
-            }
-            order.deliveryCharge = payload.deliveryCharge;
+        if (payload.deliveryOptionName) {
+            order.deliveryCharge = await resolveDeliveryCharge(
+                payload.deliveryOptionName,
+            );
+            order.deliveryOptionName = payload.deliveryOptionName;
         }
 
         order.finalAmount =
@@ -464,12 +467,11 @@ const changeOrderStatus = async (
     return updatedOrder;
 };
 
-// Public order tracking — no auth. Looks up by orderId (or the Mongo _id).
-// Returns delivery + payment tracking insights for the storefront.
+// Public order tracking — no auth. Looks up ONLY by the human-friendly
+// `orderId` (e.g. "DE07D08M0001U") — not the Mongo _id. The customer enters
+// their order id on the tracking page, so it must be the stable public key.
 const trackOrder = async (orderId: string) => {
-    const order = await Order.findOne({
-        $or: [{ orderId }, { _id: orderId }],
-    })
+    const order = await Order.findOne({ orderId })
         .populate("user", "name email")
         .populate("products.product", "name price imageUrls");
 
@@ -480,7 +482,7 @@ const trackOrder = async (orderId: string) => {
     const products = order.products.map((item: any) => ({
         productId: item.product?._id?.toString(),
         name: item.product?.name || "Unknown Product",
-        image: item.product?.imageUrls?.[0] || "",
+        image: item.product?.imageUrls?.[0]?.url || "",
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         total: item.unitPrice * item.quantity,
@@ -520,10 +522,18 @@ const trackOrder = async (orderId: string) => {
 
 // Invoice data for the frontend (rendered via react-pdf). Only a PAID order
 // produces an invoice — unpaid/COD-pending orders are rejected with 400.
-const getInvoiceData = async (orderId: string) => {
-    const order = await Order.findOne({
-        $or: [{ orderId }, { _id: orderId }],
-    })
+//
+// Lookup strategy:
+//   - default (no query param): the param is an orderId OR a Mongo _id.
+//   - ?by=transactionId: the param is a gateway transaction id (e.g. a Stripe
+//     session id / bKash paymentID) — matched ONLY against transactionId so a
+//     value can never accidentally resolve to a different order's _id.
+const getInvoiceData = async (orderId: string, by?: string) => {
+    const lookup = by === "transactionId"
+        ? { transactionId: orderId }
+        : { $or: [{ orderId }, { _id: orderId }] };
+
+    const order = await Order.findOne(lookup)
         .populate("user", "name email phoneNo address")
         .populate("products.product", "name price imageUrls");
 
@@ -566,7 +576,7 @@ const getInvoiceData = async (orderId: string) => {
         items: order.products.map((item: any) => ({
             productId: item.product?._id?.toString(),
             name: item.product?.name || "Unknown Product",
-            image: item.product?.imageUrls?.[0] || "",
+            image: item.product?.imageUrls?.[0]?.url || "",
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             total: item.unitPrice * item.quantity,

@@ -7,6 +7,46 @@ export interface ISpecification {
     value: string;
 }
 
+// Product image — keeps the Cloudinary publicId so a specific image can be
+// deleted, plus an order index for cover/reordering (0 = first/cover).
+export interface IProductImage {
+    publicId: string;
+    url: string;
+    order: number;
+}
+
+// Offer pricing — a temporary sale price override (flat amount or percentage).
+export interface IOfferPrice {
+    type: "flat" | "percentage";
+    value: number;
+    startAt: Date;
+    endAt: Date;
+    isActive: boolean;
+}
+
+// A product variant (size/color combination) with its own sku/price/stock.
+// imageUrls uses the same { publicId, url, order } shape as the main images.
+export interface IProductVariant {
+    sku: string;
+    attributes: Record<string, string>;
+    price?: number;
+    stock: number;
+    imageUrls: IProductImage[];
+    isActive: boolean;
+}
+
+// An attribute definition — the axes a product's variants vary on
+// (e.g. { key: "Color", values: ["Red", "Blue"] }).
+export interface IProductAttribute {
+    key: string;
+    values: string[];
+}
+
+export interface IColorOption {
+    name: string;
+    hex?: string;
+}
+
 // Product Schema Definition
 export interface IProduct extends Document {
     name: string;
@@ -17,7 +57,7 @@ export interface IProduct extends Document {
     stock: number;
     weight: number;
     category: Types.ObjectId;
-    imageUrls: string[];
+    imageUrls: IProductImage[];
     isActive: boolean;
     isDeleted: boolean;
     brand: Types.ObjectId;
@@ -28,6 +68,11 @@ export interface IProduct extends Document {
     availableColors: string[];
     specification: ISpecification[];
     keyFeatures: string[];
+    offerPrice?: IOfferPrice | null;
+    colorOptions: IColorOption[];
+    attributes: IProductAttribute[];
+    variants: IProductVariant[];
+    hasVariants: boolean;
     createdAt: Date;
     updatedAt: Date;
 }

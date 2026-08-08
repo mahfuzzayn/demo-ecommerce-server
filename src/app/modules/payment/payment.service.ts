@@ -9,6 +9,7 @@ import {
     bkashInit,
     bkashValidate,
     generateTransactionId,
+    ensureOrderCanInitPayment,
 } from "./payment.utils";
 import {
     ISSLCommerzInitData,
@@ -22,16 +23,6 @@ import {
 import config from "../../config";
 import { ActivityServices } from "../activity/activity.service";
 import { ActivityModule, ActivityType } from "../activity/activity.interface";
-
-// Guard: an already-paid order cannot be re-initialized
-const ensureOrderCanInitPayment = (order: any) => {
-    if (order.paymentStatus === "Paid") {
-        throw new AppError(
-            StatusCodes.BAD_REQUEST,
-            "This order has already been paid!",
-        );
-    }
-};
 
 // ----------------------------------------------------------------
 // Stripe Payment

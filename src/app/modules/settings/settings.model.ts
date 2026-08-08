@@ -1,26 +1,41 @@
 import mongoose, { Schema } from "mongoose";
 import { ISettings, SettingsModel } from "./settings.interface";
 import { SETTINGS_ID } from "./settings.constant";
+import { Currency } from "../../constants/currency";
 
 const themeColorsSchema = new Schema(
     {
-        primary: { type: String, default: "" },
-        primaryForeground: { type: String, default: "" },
-        secondary: { type: String, default: "" },
-        secondaryForeground: { type: String, default: "" },
         background: { type: String, default: "" },
         foreground: { type: String, default: "" },
-        accent: { type: String, default: "" },
-        accentForeground: { type: String, default: "" },
-        muted: { type: String, default: "" },
-        mutedForeground: { type: String, default: "" },
-        border: { type: String, default: "" },
-        destructive: { type: String, default: "" },
-        ring: { type: String, default: "" },
         card: { type: String, default: "" },
         cardForeground: { type: String, default: "" },
         popover: { type: String, default: "" },
         popoverForeground: { type: String, default: "" },
+        primary: { type: String, default: "" },
+        primaryForeground: { type: String, default: "" },
+        secondary: { type: String, default: "" },
+        secondaryForeground: { type: String, default: "" },
+        muted: { type: String, default: "" },
+        mutedForeground: { type: String, default: "" },
+        accent: { type: String, default: "" },
+        accentForeground: { type: String, default: "" },
+        destructive: { type: String, default: "" },
+        border: { type: String, default: "" },
+        input: { type: String, default: "" },
+        ring: { type: String, default: "" },
+        chart1: { type: String, default: "" },
+        chart2: { type: String, default: "" },
+        chart3: { type: String, default: "" },
+        chart4: { type: String, default: "" },
+        chart5: { type: String, default: "" },
+        sidebar: { type: String, default: "" },
+        sidebarForeground: { type: String, default: "" },
+        sidebarPrimary: { type: String, default: "" },
+        sidebarPrimaryForeground: { type: String, default: "" },
+        sidebarAccent: { type: String, default: "" },
+        sidebarAccentForeground: { type: String, default: "" },
+        sidebarBorder: { type: String, default: "" },
+        sidebarRing: { type: String, default: "" },
     },
     { _id: false },
 );
@@ -34,6 +49,7 @@ const themeSchema = new Schema(
         },
         fonts: {
             family: { type: String, default: "" },
+            mono: { type: String, default: "" },
             sizes: {
                 h1: { type: String, default: "" },
                 h2: { type: String, default: "" },
@@ -57,6 +73,25 @@ const brandSchema = new Schema(
         nicheLabel: { type: String, default: "" },
         logo: { type: String, default: "" },
         favicon: { type: String, default: "" },
+        currency: {
+            type: String,
+            enum: Object.values(Currency),
+            default: Currency.USD,
+        },
+        deliveryOptions: {
+            type: [
+                new Schema(
+                    {
+                        name: { type: String, default: "" },
+                        charge: { type: Number, default: 0, min: 0 },
+                        country: { type: String, default: "" },
+                        isActive: { type: Boolean, default: true },
+                    },
+                    { _id: false },
+                ),
+            ],
+            default: [],
+        },
     },
     { _id: false },
 );

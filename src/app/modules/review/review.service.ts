@@ -6,39 +6,13 @@ import Review from "./review.model";
 import Product from "../product/product.model";
 import { ReviewSearchableFields } from "./review.constant";
 import { IJwtPayload } from "../auth/auth.interface";
-import { Types } from "mongoose";
 import { ActivityServices } from "../activity/activity.service";
 import { ActivityModule, ActivityType } from "../activity/activity.interface";
-
-// Recalculate a product's averageRating/ratingCount from its non-flagged reviews
-const recalcProductRating = async (productId: Types.ObjectId | string) => {
-    const ratingStats = await Review.aggregate([
-        { $match: { product: productId, isFlagged: false } },
-        {
-            $group: {
-                _id: "$product",
-                averageRating: { $avg: "$rating" },
-                ratingCount: { $sum: 1 },
-            },
-        },
-    ]);
-
-    if (ratingStats.length > 0) {
-        await Product.findByIdAndUpdate(productId, {
-            averageRating: Math.round(ratingStats[0].averageRating * 10) / 10,
-            ratingCount: ratingStats[0].ratingCount,
-        });
-    } else {
-        await Product.findByIdAndUpdate(productId, {
-            averageRating: 0,
-            ratingCount: 0,
-        });
-    }
-};
+import { recalcProductRating, hasVerifiedPurchase } from "./review.utils";
 
 const getAllReviews = async (query: Record<string, unknown>) => {
     const reviewQuery = new QueryBuilder(
-        Review.find({ isFlagged: false })
+        Review.find()
             .populate("user", "name email photoUrl")
             .populate("product", "name slug"),
         query,
@@ -58,7 +32,6 @@ const getAllReviews = async (query: Record<string, unknown>) => {
 const getSingleReview = async (reviewId: string) => {
     const review = await Review.findOne({
         _id: reviewId,
-        isFlagged: false,
     })
         .populate("user", "name email photoUrl")
         .populate("product", "name slug");
@@ -68,6 +41,30 @@ const getSingleReview = async (reviewId: string) => {
     }
 
     return review;
+};
+
+// The authenticated customer's own reviews (including flagged ones — they
+// belong to them and may want to see/revise them).
+const getMyReviews = async (
+    authUser: IJwtPayload,
+    query: Record<string, unknown>,
+) => {
+    const reviewQuery = new QueryBuilder(
+        Review.find({ user: authUser.userId })
+            .populate("user", "name email photoUrl")
+            .populate("product", "name slug"),
+        query,
+    )
+        .search(ReviewSearchableFields)
+        .filter()
+        .sort()
+        .paginate()
+        .fields();
+
+    const result = await reviewQuery.modelQuery;
+    const meta = await reviewQuery.countTotal();
+
+    return { result, meta };
 };
 
 const createReview = async (
@@ -105,9 +102,12 @@ const createReview = async (
     // Attach user to review
     payload.user = authUser.userId as any;
 
-    // Check if user has purchased this product (simplified check)
-    // For now, mark as not verified — can be enhanced with order lookup
-    payload.isVerifiedPurchase = false;
+    // Verified purchase: only a Processing/Shipped/Completed order for this
+    // product counts — a Pending or Cancelled order does not.
+    payload.isVerifiedPurchase = await hasVerifiedPurchase(
+        authUser.userId,
+        payload.product.toString(),
+    );
 
     const review = await Review.create(payload);
 
@@ -189,6 +189,7 @@ const deleteReview = async (reviewId: string) => {
 export const ReviewServices = {
     getAllReviews,
     getSingleReview,
+    getMyReviews,
     createReview,
     toggleReviewFlag,
     deleteReview,

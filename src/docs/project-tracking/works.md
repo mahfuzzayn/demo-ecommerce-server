@@ -67,5 +67,94 @@ Finalize the modules, check all edge cases, trade offs, and update the backend-u
 - `works.md` — this completion record.
 
 
+## Work 2 (Line 89 Starting) (Completed)
+### Settings Module update
+1. Brand section will have currency "usd", "bdt", "aud", "gbp", "euro", as value and label. When creating product it won't take manual currency it will inherit from brand currency data, similarly when creating order it will look from product currency and inherit that not from brand.
+Then deliveryOptions in brand section
+deliveryOptions: [
+  {
+    name: string;       // "Store Pickup", "Inside Dhaka", "Outside Dhaka", "International"
+    charge: number;     // 0, 90, 150, 15
+    country?: string;   // "BD" or omit = worldwide/default
+    isActive: boolean;
+  }
+]
+e.g.
+[
+  { name: "Store Pickup", charge: 0 },
+  { name: "Inside Dhaka", charge: 90, country: "BD" },
+  { name: "Outside Dhaka", charge: 150, country: "BD" },
+  { name: "International", charge: 15 }, // no country = fallback for everyone else
+]
+
+Then update in order creating user can't select the deliveryCharge amount instead he will use deliveryOptionName field = "Inside Dhaka" and then backend in order creation verify with brand delivery options and get the exact value then internally set the deliveryCharge.
+
+By doing this the whole store will use at a time one currency, but can change if needed + delivery options can be modified.
+
+### Product Module Update
+we need offerPrice for product, so admin can update or modify offer and maintain for each products
+
+// I have given you a sample, think and decide then make, if changes needed apply according to our writing style of code.
+// product.model.ts
+const offerPriceSchema = new Schema({
+  type: { type: String, enum: ["flat", "percentage"], required: true },
+  value: { type: Number, required: true, min: 0 },
+  startAt: { type: Date, required: true },
+  endAt: { type: Date, required: true },
+  isActive: { type: Boolean, default: true },
+}, { _id: false });
+
+// add to productSchema:
+offerPrice: { type: offerPriceSchema, default: null }
+
+Then Variants for product so a product can have a single variant (by default) or multi variant by sizes, colors etc.
+
+// product.model.ts
+const productVariantSchema = new Schema({
+  sku: { type: String, required: true, unique: true },
+  attributes: { type: Map, of: String, required: true },
+  price: { type: Number, min: 0 },
+  stock: { type: Number, required: true, min: 0, default: 0 },
+  imageUrls: { type: [String], default: [] },
+  isActive: { type: Boolean, default: true },
+}, { _id: false });
+
+// add to productSchema:
+colorOptions: { type: [{ name: String, hex: String }], default: [] },
+variants: { type: [productVariantSchema], default: [] },
+hasVariants: { type: Boolean, default: false },
+
+The sku will be like this: {PRODUCT_PREFIX}-{COLOR}-{SIZE}-{RANDOM}, made on backend.
+
+Then Product Image updating feature needs improvement user can keep and update images or re order what to keep first and last, currently it replaces, and no order of photos to manage.
+
+// product.interface.ts
+export interface IProductImage {
+  publicId: string;   // cloudinary public_id, needed to delete specific ones
+  url: string;
+  order: number;       // for reordering, 0 = first/cover image
+}
+imageUrls: { type: [{ publicId: String, url: String, order: Number }], default: [] },
+// request body
+{
+  keepImages: [{ publicId: "abc", order: 0 }, { publicId: "def", order: 1 }], // existing, reordered
+  newImages: [File, File],           // to upload
+  removedImageIds: ["ghi", "jkl"],   // to delete from cloudinary
+}
+// These are to brainstorm, now think and decide according to our building style and update the system.
+
+### User Module
+User profile photoUrl needs a removal process, let user send photoUrl: "", it will accept it and make the photoUrl property null
+
+
+
+
 # Payment Issue (New)
 SSLCommerz not initializing payments, looks like they have updated from v3 to v4, need to research first.
+
+## Works 3
+
+### Updates
+
+1. Settings Brand Theme: currency is single item as "usd" or "bdt" etc. (Done)
+2. Product create/update update, size, color wise

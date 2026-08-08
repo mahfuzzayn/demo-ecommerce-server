@@ -18,6 +18,54 @@ const specificationSchema = new Schema(
     { _id: false },
 );
 
+const productImageSchema = new Schema(
+    {
+        publicId: { type: String, default: "" },
+        url: { type: String, default: "" },
+        order: { type: Number, default: 0 },
+    },
+    { _id: false },
+);
+
+const offerPriceSchema = new Schema(
+    {
+        type: { type: String, enum: ["flat", "percentage"], required: true },
+        value: { type: Number, required: true, min: 0 },
+        startAt: { type: Date, required: true },
+        endAt: { type: Date, required: true },
+        isActive: { type: Boolean, default: true },
+    },
+    { _id: false },
+);
+
+const colorOptionSchema = new Schema(
+    {
+        name: { type: String, required: true },
+        hex: { type: String, default: "" },
+    },
+    { _id: false },
+);
+
+const productAttributeSchema = new Schema(
+    {
+        key: { type: String, required: true },
+        values: { type: [String], default: [] },
+    },
+    { _id: false },
+);
+
+const productVariantSchema = new Schema(
+    {
+        sku: { type: String, required: true, unique: true },
+        attributes: { type: Map, of: String, required: true },
+        price: { type: Number, min: 0 },
+        stock: { type: Number, required: true, min: 0, default: 0 },
+        imageUrls: { type: [productImageSchema], default: [] },
+        isActive: { type: Boolean, default: true },
+    },
+    { _id: false },
+);
+
 const productSchema = new Schema<IProduct, ProductModel>(
     {
         name: {
@@ -62,7 +110,7 @@ const productSchema = new Schema<IProduct, ProductModel>(
             required: true,
         },
         imageUrls: {
-            type: [String],
+            type: [productImageSchema],
             default: [],
         },
         isActive: {
@@ -112,6 +160,26 @@ const productSchema = new Schema<IProduct, ProductModel>(
         keyFeatures: {
             type: [String],
             default: [],
+        },
+        offerPrice: {
+            type: offerPriceSchema,
+            default: null,
+        },
+        colorOptions: {
+            type: [colorOptionSchema],
+            default: [],
+        },
+        attributes: {
+            type: [productAttributeSchema],
+            default: [],
+        },
+        variants: {
+            type: [productVariantSchema],
+            default: [],
+        },
+        hasVariants: {
+            type: Boolean,
+            default: false,
         },
     },
     {

@@ -9,6 +9,12 @@ const router = Router();
 
 router.get("/", ReviewController.getAllReviews);
 
+router.get(
+    "/my-reviews",
+    auth(UserRole.CUSTOMER),
+    ReviewController.getMyReviews,
+);
+
 router.get("/:reviewId", ReviewController.getSingleReview);
 
 router.post(

@@ -29,6 +29,21 @@ const getSingleReview = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getMyReviews = catchAsync(async (req: Request, res: Response) => {
+    const result = await ReviewServices.getMyReviews(
+        req.user as IJwtPayload,
+        req.query,
+    );
+
+    sendResponse(res, {
+        statusCode: StatusCodes.OK,
+        success: true,
+        message: "My reviews retrieved successfully",
+        meta: result.meta,
+        data: result.result,
+    });
+});
+
 const createReview = catchAsync(async (req: Request, res: Response) => {
     const result = await ReviewServices.createReview(
         req.body,
@@ -70,6 +85,7 @@ const deleteReview = catchAsync(async (req: Request, res: Response) => {
 export const ReviewController = {
     getAllReviews,
     getSingleReview,
+    getMyReviews,
     createReview,
     toggleReviewFlag,
     deleteReview,

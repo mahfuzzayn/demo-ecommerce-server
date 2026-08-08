@@ -113,8 +113,11 @@ const updateProfile = async (
         throw new AppError(StatusCodes.BAD_REQUEST, "User is not active!");
     }
 
+    // A new uploaded photo overrides; photoUrl: "" removes the current photo.
     if (file && file.path) {
         payload.photoUrl = file.path;
+    } else if (payload.photoUrl === "") {
+        payload.photoUrl = null as any;
     }
 
     const result = await User.findOneAndUpdate(

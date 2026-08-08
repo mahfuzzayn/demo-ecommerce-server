@@ -12,7 +12,11 @@ const createOrderValidationSchema = z.object({
             .array(orderProductSchema)
             .min(1, "At least one product is required"),
         coupon: z.string().optional(),
-        deliveryCharge: z.number().min(0).default(0),
+        // The user picks a delivery option NAME (e.g. "Inside Dhaka"); the
+        // backend resolves the charge from the store's brand settings.
+        deliveryOptionName: z
+            .string()
+            .min(1, "Delivery option is required"),
         shippingAddress: z
             .string()
             .min(1, "Shipping address is required"),
@@ -33,7 +37,7 @@ const updateOrderValidationSchema = z.object({
     body: z.object({
         products: z.array(orderProductSchema).min(1).optional(),
         coupon: z.string().nullable().optional(),
-        deliveryCharge: z.number().min(0).optional(),
+        deliveryOptionName: z.string().min(1).optional(),
         shippingAddress: z.string().min(1).optional(),
         recipientName: z.string().min(1).optional(),
         phoneNo: z.string().min(1).optional(),

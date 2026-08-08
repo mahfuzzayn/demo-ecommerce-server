@@ -7,6 +7,7 @@ import { settingsCache } from "./settings.cache";
 import { settingsPresets, DEFAULT_NICHE } from "./settings.presets";
 import { ActivityServices } from "../activity/activity.service";
 import { ActivityModule, ActivityType } from "../activity/activity.interface";
+import { mapSectionFiles } from "./settings.utils";
 
 const getSettings = async (): Promise<ISettings> => {
     const cached = settingsCache.get();
@@ -25,38 +26,6 @@ const getSettings = async (): Promise<ISettings> => {
     settingsCache.set(data as ISettings);
 
     return data as ISettings;
-};
-
-// Maps uploaded files into the section body by position (same semantics as
-// the product module: re-send the whole section, image fields come from files).
-const mapSectionFiles = <T extends Record<string, unknown>>(
-    section: SettingsSection,
-    body: T,
-    files?: Express.Multer.File[],
-): T => {
-    if (!files?.length) return body;
-
-    if (section === "hero") {
-        const slides = (body as any).slides as any[] | undefined;
-        if (slides) {
-            slides.forEach((slide, i) => {
-                if (files[i]) slide.image = files[i].path;
-            });
-        }
-    } else if (section === "testimonials") {
-        const items = (body as any).items as any[] | undefined;
-        if (items) {
-            items.forEach((item, i) => {
-                if (files[i]) item.avatar = files[i].path;
-            });
-        }
-    } else if (section === "about") {
-        (body as any).image = files[0]?.path ?? (body as any).image;
-    } else if (section === "limitedOffer") {
-        (body as any).image = files[0]?.path ?? (body as any).image;
-    }
-
-    return body;
 };
 
 const updateSection = async <K extends SettingsSection>(
@@ -95,19 +64,39 @@ const updateBrandFields = async (
     payload: Partial<ISettings["brand"]>,
     files?: { logo?: Express.Multer.File[]; favicon?: Express.Multer.File[] },
 ) => {
-    const update: Partial<ISettings["brand"]> = { ...payload };
+    // Build a $set with dotted paths — ONLY for fields actually provided.
+    // This preserves any field the client didn't send (e.g. logo/favicon stay
+    // unchanged instead of being reset to "" by a full brand sub-doc replace).
+    const set: Record<string, unknown> = {};
 
+    if (payload && typeof payload === "object") {
+        for (const [key, value] of Object.entries(payload)) {
+            if (value !== undefined) {
+                set[`brand.${key}`] = value;
+            }
+        }
+    }
+
+    // Uploaded files override the corresponding text fields.
     if (files?.logo?.length) {
-        update.logo = files.logo[0].path;
+        set["brand.logo"] = files.logo[0].path;
     }
 
     if (files?.favicon?.length) {
-        update.favicon = files.favicon[0].path;
+        set["brand.favicon"] = files.favicon[0].path;
+    }
+
+    // Nothing to update → 400 instead of a pointless write.
+    if (Object.keys(set).length === 0) {
+        throw new AppError(
+            StatusCodes.BAD_REQUEST,
+            "No brand fields provided to update!",
+        );
     }
 
     const updated = await Settings.findByIdAndUpdate(
         SETTINGS_ID,
-        { $set: { brand: update } },
+        { $set: set },
         { new: true, runValidators: true },
     );
 
@@ -124,6 +113,7 @@ const updateBrandFields = async (
         module: ActivityModule.SETTINGS,
         type: ActivityType.UPDATE,
         message: "Brand settings were updated",
+        metadata: { fields: Object.keys(set) },
     });
 
     return updated.toObject();

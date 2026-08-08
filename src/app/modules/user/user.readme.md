@@ -122,6 +122,7 @@ Fields:
   address: "123 Main Street, Dhaka"
   profilePhoto: [file upload]
 ```
+Note: To **remove** the current photo, send `photoUrl: ""` (in the `data` JSON, or as a plain field if JSON) — the backend sets `photoUrl` to `null`. A new `profilePhoto` upload overrides it.
 
 **Response:**
 ```json

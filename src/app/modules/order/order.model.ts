@@ -72,6 +72,11 @@ const orderSchema = new Schema<IOrder, OrderModel>(
             default: 0,
             min: 0,
         },
+        deliveryOptionName: {
+            type: String,
+            default: "",
+            trim: true,
+        },
         finalAmount: {
             type: Number,
             required: true,

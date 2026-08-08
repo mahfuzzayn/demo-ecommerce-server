@@ -1,6 +1,8 @@
 // Niche presets — single source for seeding a fresh storefront.
 // Source: src/docs/project-tracking/theme.config.ts (converted to the new
-// Settings section shape: brand / hero.slides / about / contact / footer).
+// Settings section shape: brand / hero.slides / about / contact / footer)
+// plus a per-niche theme from settings.themes.ts so each niche has its own
+// dynamic look (colors, fonts, radius).
 
 import {
     IAboutSection,
@@ -8,10 +10,28 @@ import {
     IContactSection,
     IFooterSection,
     IHeroSection,
+    IThemeSettings,
 } from "./settings.interface";
+import {
+    clothingTheme,
+    perfumeOilTheme,
+    eyewearTheme,
+} from "./settings.themes";
+
+// Default store currency + delivery options shared by every niche preset.
+// Admins can override them later via the settings update.
+const defaultCurrency: IBrandSettings["currency"] = "usd";
+
+const defaultDeliveryOptions: IBrandSettings["deliveryOptions"] = [
+    { name: "Store Pickup", charge: 0, country: "", isActive: true },
+    { name: "Inside Dhaka", charge: 90, country: "BD", isActive: true },
+    { name: "Outside Dhaka", charge: 150, country: "BD", isActive: true },
+    { name: "International", charge: 15, country: "", isActive: true },
+];
 
 export interface ISettingsPreset {
     brand: IBrandSettings;
+    theme: IThemeSettings;
     hero: IHeroSection;
     about: IAboutSection;
     contact: IContactSection;
@@ -22,6 +42,7 @@ export const DEFAULT_NICHE = "perfume_oil";
 
 export const settingsPresets: Record<string, ISettingsPreset> = {
     clothing: {
+        theme: clothingTheme,
         brand: {
             name: "Attor",
             tagline: "Define Your Style",
@@ -30,6 +51,8 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
             nicheLabel: "Clothing",
             logo: "/demo/clothing/logo.svg",
             favicon: "",
+            currency: defaultCurrency,
+            deliveryOptions: defaultDeliveryOptions,
         },
         hero: {
             slides: [
@@ -111,6 +134,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
         },
     },
     perfume_oil: {
+        theme: perfumeOilTheme,
         brand: {
             name: "Attor",
             tagline: "Essence of Distinction",
@@ -119,6 +143,8 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
             nicheLabel: "Perfume Oil",
             logo: "/demo/perfume-oil/logo.png",
             favicon: "",
+            currency: defaultCurrency,
+            deliveryOptions: defaultDeliveryOptions,
         },
         hero: {
             slides: [
@@ -200,6 +226,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
         },
     },
     eyewear: {
+        theme: eyewearTheme,
         brand: {
             name: "Attor Optics",
             tagline: "See Clearly, Look Sharp",
@@ -208,6 +235,8 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
             nicheLabel: "Eyewear",
             logo: "/demo/eyewear/logo.svg",
             favicon: "",
+            currency: defaultCurrency,
+            deliveryOptions: defaultDeliveryOptions,
         },
         hero: {
             slides: [

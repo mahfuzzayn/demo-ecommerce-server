@@ -6,7 +6,7 @@ The Order module handles customer orders from creation through fulfillment. It v
 ## How It Works
 - **List orders** – Admin-only. Returns all orders with user and product details populated. Supports search, filter, sort, and pagination via QueryBuilder.
 - **My orders** – Customer-only. Returns the authenticated customer's own orders (same search/filter/sort/pagination).
-- **Track order** – Public. Looks up an order by its human-friendly `orderId` (or Mongo `_id`) and returns delivery + payment tracking insights.
+- **Track order** – Public. Looks up an order **only by its human-friendly `orderId`** (e.g. `DEY2H7ULPD`) and returns delivery + payment tracking insights.
 - **Get order details** – Authenticated users (admin or the order owner). Returns full order with user and product population. Guest orders have no owner — only admins can view them here.
 - **Get invoice** – Admin or the order owner. Returns invoice data (JSON) for the frontend to render. **Only for paid orders** — unpaid orders get 400.
 - **Create order** – **No auth required (guest checkout)**; if a valid Bearer token is present the order is linked to that user, otherwise `user` is `null`. Validates each product exists, is active, and has sufficient stock. Computes all money server-side from DB prices (client-supplied `unitPrice`/totals are ignored). Verifies the coupon, decrements stock, and stores the currency inherited from the products.
@@ -17,7 +17,7 @@ The Order module handles customer orders from creation through fulfillment. It v
 Orders move through: `Pending` → `Processing` → `Shipped` → `Completed`. Can also be `Cancelled`. Once `Cancelled` or `Completed`, the status is locked.
 
 ### Order ID format
-Every order gets a unique human-friendly `orderId`: `DE{DD}D{MM}M{0001}{U|G}` (e.g. `DE07D08M0001U`). `U` = placed by a logged-in user, `G` = guest. The 4-digit sequence increments per day and a unique index guarantees uniqueness.
+Every order gets a unique, **unguessable** `orderId`: `DEXXXXXXXX` (10 chars, e.g. `DEY2H7ULPD`). The 8-char suffix after `DE` is cryptographically random (alphanumeric, no `I/O/1/0` look-alikes). **No date or sequence is encoded** — a predictable incrementing number would let users guess other orders and scrape data. A unique index guarantees uniqueness, with a retry loop re-rolling on the rare collision.
 
 ### Currency & Payment Tracking
 - **Currency** – inherited from the products at creation. All products in an order must share the same currency, else 400. Values: `usd` (default), `bdt`, `eur`, `gbp`, `inr`, `aed`, `aud`, `cad`.
@@ -42,7 +42,7 @@ Authorization: Bearer <admin_token>
     "data": [
         {
             "_id": "order_id",
-            "orderId": "DE07D08M0001U",
+            "orderId": "DEY2H7ULPD",
             "user": { "_id": "user_id", "name": "John Doe", "email": "john@example.com" },
             "products": [
                 {
@@ -54,8 +54,9 @@ Authorization: Bearer <admin_token>
             "coupon": null,
             "totalAmount": 1599.98,
             "discount": 0,
-            "deliveryCharge": 50,
-            "finalAmount": 1649.98,
+            "deliveryCharge": 90,
+            "deliveryOptionName": "Inside Dhaka",
+            "finalAmount": 1689.98,
             "currency": "usd",
             "status": "Pending",
             "shippingAddress": "123 Main Street, Dhaka",
@@ -94,8 +95,9 @@ Authorization: Bearer <customer_token>
 ### GET /api/v1/order/track-order/:orderId (Track Order — Public)
 **Request:**
 ```
-GET /api/v1/order/track-order/DE07D08M0001U
+GET /api/v1/order/track-order/DEY2H7ULPD
 ```
+The `:orderId` param is the **human-friendly `orderId`** (e.g. `DEY2H7ULPD`) — the public key a customer enters on the tracking page. The Mongo `_id` is **not** accepted here; tracking works only by the stable `orderId` field.
 
 **Response:**
 ```json
@@ -103,7 +105,7 @@ GET /api/v1/order/track-order/DE07D08M0001U
     "success": true,
     "message": "Order tracking details retrieved successfully",
     "data": {
-        "orderId": "DE07D08M0001U",
+        "orderId": "DEY2H7ULPD",
         "id": "order_id",
         "status": "Processing",
         "paymentStatus": "Paid",
@@ -138,14 +140,21 @@ GET /api/v1/order/track-order/DE07D08M0001U
     }
 }
 ```
-Note: Public route — no auth. Useful for a "track your order" page where the customer enters their order id.
+Note: Public route — no auth. Useful for a "track your order" page where the customer enters their order id. Only the human-friendly `orderId` is accepted (the Mongo `_id` is not).
 
 ### GET /api/v1/order/:orderId/invoice (Get Order Invoice)
-**Request:**
+**Request — by orderId or Mongo _id (default):**
 ```
-GET /api/v1/order/DE07D08M0001U/invoice
+GET /api/v1/order/DEY2H7ULPD/invoice
 Authorization: Bearer <admin_token or customer_token>
 ```
+
+**Request — by gateway transactionId (opt-in):**
+```
+GET /api/v1/order/cs_test_abc123.../invoice?by=transactionId
+Authorization: Bearer <admin_token or customer_token>
+```
+The payment success page can use this to fetch the invoice straight from the `tran_id` returned by the gateway callback, without knowing the order's `_id`/`orderId`. When `?by=transactionId` is present, the param is matched **only** against `transactionId` — it never falls back to `_id`, so a value can't resolve to the wrong order. Without the param, the lookup is `orderId` OR `_id` (existing callers keep working unchanged).
 
 **Response:**
 ```json
@@ -153,7 +162,7 @@ Authorization: Bearer <admin_token or customer_token>
     "success": true,
     "message": "Order invoice retrieved successfully",
     "data": {
-        "orderId": "DE07D08M0001U",
+        "orderId": "DEY2H7ULPD",
         "id": "order_id",
         "status": "Processing",
         "currency": "usd",
@@ -225,7 +234,7 @@ Content-Type: application/json
         { "product": "prod_id", "quantity": 2 }
     ],
     "coupon": "SAVE20",
-    "deliveryCharge": 50,
+    "deliveryOptionName": "Inside Dhaka",
     "shippingAddress": "123 Main Street, Dhaka",
     "recipientName": "John Doe",
     "phoneNo": "+1 (555) 123-4567",
@@ -233,6 +242,7 @@ Content-Type: application/json
     "paymentMethod": "Online"
 }
 ```
+Note: The customer sends `deliveryOptionName` (e.g. `"Inside Dhaka"` / `"Store Pickup"` / `"Outside Dhaka"` / `"International"`); the backend looks up the option in the store's brand settings and sets `deliveryCharge` server-side. The amount is never sent by the client.
 
 **Response:**
 ```json
@@ -241,7 +251,7 @@ Content-Type: application/json
     "message": "Order created successfully",
     "data": {
         "_id": "order_id",
-        "orderId": "DE07D08M0002U",
+        "orderId": "DEW3M8QK2T",
         "user": { "_id": "user_id", "name": "John Doe", "email": "john@example.com" },
         "products": [
             {
@@ -252,8 +262,9 @@ Content-Type: application/json
         ],
         "totalAmount": 1599.98,
         "discount": 0,
-        "deliveryCharge": 50,
-        "finalAmount": 1649.98,
+        "deliveryCharge": 90,
+        "deliveryOptionName": "Inside Dhaka",
+        "finalAmount": 1689.98,
         "currency": "usd",
         "status": "Pending",
         "shippingAddress": "123 Main Street, Dhaka",
@@ -267,7 +278,7 @@ Content-Type: application/json
     }
 }
 ```
-Note: `totalAmount`/`discount`/`finalAmount`/`unitPrice` are computed server-side from real product prices — never client-supplied. `coupon` is verified (exists, active, in date range, meets min order). Stock is decremented inside a transaction. `currency` is inherited from the products. With no token the order is created as a **guest** (`user: null`, orderId suffix `G`); with a valid token the order is linked to that user (suffix `U`). `recipientName` and `phoneNo` are required; `notes` is optional.
+Note: `totalAmount`/`discount`/`finalAmount`/`unitPrice` are computed server-side from real product prices — never client-supplied. `coupon` is verified (exists, active, in date range, meets min order). Stock is decremented inside a transaction. `currency` is inherited from the products. With no token the order is created as a **guest** (`user: null`); with a valid token the order is linked to that user. Every order gets a random, unguessable `orderId` (`DEXXXXXXXX`, e.g. `DEY2H7ULPD`). `recipientName` and `phoneNo` are required; `notes` is optional.
 
 ### PATCH /api/v1/order/:orderId (Update Order)
 **Request:**
@@ -279,7 +290,7 @@ Content-Type: application/json
 {
     "products": [ { "product": "prod_id", "quantity": 3 } ],
     "coupon": "SAVE20",
-    "deliveryCharge": 60,
+    "deliveryOptionName": "Outside Dhaka",
     "shippingAddress": "456 New Street, Dhaka",
     "recipientName": "Jane Doe",
     "phoneNo": "+1 (555) 987-6543",

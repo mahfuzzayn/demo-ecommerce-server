@@ -1,14 +1,15 @@
 # Review Module
 
 ## Overview
-The Review module handles product reviews and ratings. Users can submit reviews with a rating (1-5) and description. Each user can only submit one review per product. When a review is created, the product's average rating and rating count are automatically updated.
+The Review module handles product reviews and ratings. Customers submit reviews with a rating (1-5) and description. Each user can only submit **one review per product**, and the review is checked against the user's **orders** to confirm they actually purchased the product. When a review is created, the product's average rating and rating count are automatically updated.
 
 ## How It Works
-- **List reviews** – Public route, returns all reviews with user and product details
-- **Get single review** – Public route, returns a specific review
-- **Create review** – Authenticated users can create reviews; duplicate user+product combinations are rejected
+- **List reviews** – Public route, returns non-flagged reviews with user and product details
+- **Get single review** – Public route, returns a specific non-flagged review
+- **My reviews** – Customer-only. Returns the authenticated customer's own reviews (including flagged ones) with pagination
+- **Create review** – Customer-only. Validates: product exists + active, the user **has not already reviewed it**, and computes `isVerifiedPurchase` by looking up the user's orders
+- **Verified purchase** – `isVerifiedPurchase` is `true` only when the user has a `Processing`/`Shipped`/`Completed` order containing that product (a `Pending` or `Cancelled` order does not count)
 - **Rating sync** – Creating a review triggers an aggregation to recalculate the product's `averageRating` and `ratingCount`
-- **Verified purchase** – Placeholder for future order verification integration
 
 ## Test Data
 
@@ -67,6 +68,37 @@ GET /api/v1/review/review_id_1
 }
 ```
 
+### GET /api/v1/review/my-reviews (My Reviews — Customer)
+**Request:**
+```
+GET /api/v1/review/my-reviews?page=1&limit=10
+Authorization: Bearer <customer_token>
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "message": "My reviews retrieved successfully",
+    "meta": { "page": 1, "limit": 10, "total": 2, "totalPage": 1 },
+    "data": [
+        {
+            "_id": "review_id_1",
+            "rating": 4,
+            "description": "Great product! Highly recommended.",
+            "user": { "_id": "user_id", "name": "John Doe", "email": "john@example.com", "photoUrl": "" },
+            "product": { "_id": "product_id", "name": "Smartphone X", "slug": "smartphone-x" },
+            "isFlagged": false,
+            "flaggedReason": "",
+            "isVerifiedPurchase": true,
+            "createdAt": "2025-01-15T00:00:00.000Z",
+            "updatedAt": "2025-01-15T00:00:00.000Z"
+        }
+    ]
+}
+```
+Note: Only the authenticated customer's own reviews, including flagged ones.
+
 ### POST /api/v1/review (Create Review)
 **Request:**
 ```
@@ -94,9 +126,10 @@ Content-Type: application/json
         "product": { "_id": "product_id", "name": "Smartphone X", "slug": "smartphone-x" },
         "isFlagged": false,
         "flaggedReason": "",
-        "isVerifiedPurchase": false,
+        "isVerifiedPurchase": true,
         "createdAt": "2025-01-15T00:00:00.000Z",
         "updatedAt": "2025-01-15T00:00:00.000Z"
     }
 }
 ```
+Note: `isVerifiedPurchase` is computed server-side from the customer's orders — `true` only when they have a `Processing`/`Shipped`/`Completed` order containing this product. Errors: 404 "Product not found!" / 400 "Product is not available!" / 409 "You have already reviewed this product!".

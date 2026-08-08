@@ -486,9 +486,10 @@ Authorization: Bearer <accessToken>
 Content-Type: multipart/form-data
 
 Form fields:
-  data: {"name":"John Updated","phoneNo":"01712345678","gender":"Male","dateOfBirth":"1990-01-01","address":"123 Main Street, Dhaka"}
+  data: {"name":"John Updated","phoneNo":"01712345678","gender":"Male","dateOfBirth":"1990-01-01","address":"123 Main Street, Dhaka","photoUrl":""}
   profilePhoto: <image file>
 ```
+To **remove** the current photo, send `photoUrl: ""` — the backend sets it to `null`. A `profilePhoto` upload overrides it.
 
 Allowed `data` fields (all optional, unknown keys are rejected — `zod .strict()`):
 
@@ -548,7 +549,7 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/product`
 
-Product model fields: `name`, `slug` (auto-generated), `description`, `price`, `currency` (`usd` default, `bdt`, `eur`, `gbp`, `inr`, `aed`, `aud`, `cad`), `stock`, `weight`, `category` (ObjectId → Category), `brand` (ObjectId → Brand), `createdBy` (ObjectId → User, attached automatically), `imageUrls[]`, `isActive`, `isDeleted`, `averageRating`, `ratingCount`, `availableColors[]`, `specification[]` (`{key, value}`), `keyFeatures[]`, timestamps.
+Product model fields: `name`, `slug` (auto-generated), `description`, `price`, `currency` (inherited from store brand settings — not sent on create), `stock`, `weight`, `category` (ObjectId → Category), `brand` (ObjectId → Brand), `createdBy` (ObjectId → User, attached automatically), `imageUrls[]` (`{ publicId, url, order }`), `isActive`, `isDeleted`, `averageRating`, `ratingCount`, `availableColors[]`, `specification[]` (`{key, value}`), `keyFeatures[]`, `offerPrice` (`{ type: flat|percentage, value, startAt, endAt, isActive }`), `colorOptions[]` (`{ name, hex }`), `attributes[]` (`{ key, values }` — variant axes), `variants[]` (`{ sku, attributes, price?, stock, imageUrls, isActive }` — variant `imageUrls` same `{ publicId, url, order }` shape), `hasVariants`, timestamps.
 
 ### 7.1 GET /api/v1/product — Get all products
 
@@ -594,11 +595,30 @@ GET /api/v1/product?searchTerm=phone&minPrice=100&maxPrice=1000&page=1&limit=10
           "createdAt": "2026-07-20T10:00:00.000Z"
         }
       ],
-      "imageUrls": ["https://res.cloudinary.com/.../image1.jpg"],
+      "imageUrls": [
+        { "publicId": "demo-ecommerce/abc123", "url": "https://res.cloudinary.com/.../image1.jpg", "order": 0 },
+        { "publicId": "demo-ecommerce/def456", "url": "https://res.cloudinary.com/.../image2.jpg", "order": 1 }
+      ],
       "isActive": true,
       "averageRating": 4.5,
       "ratingCount": 12,
       "availableColors": ["Black", "White"],
+      "offerPrice": null,
+      "colorOptions": [ { "name": "Black", "hex": "#000000" }, { "name": "White", "hex": "#FFFFFF" } ],
+      "attributes": [ { "key": "Color", "values": ["Black", "White"] }, { "key": "Size", "values": ["S", "M", "L"] } ],
+      "variants": [
+        {
+          "sku": "SMAR-BLACK-M-7F3K9Q",
+          "attributes": { "Color": "Black", "Size": "M" },
+          "price": 799.99,
+          "stock": 20,
+          "imageUrls": [
+            { "publicId": "demo-ecommerce/variant-red", "url": "https://res.cloudinary.com/.../variant-red.jpg", "order": 0 }
+          ],
+          "isActive": true
+        }
+      ],
+      "hasVariants": true,
       "specification": [
         { "key": "RAM", "value": "8GB" },
         { "key": "Storage", "value": "128GB" }
@@ -642,11 +662,11 @@ Authorization: Bearer <adminAccessToken>
 Content-Type: multipart/form-data
 
 Form fields:
-  data: {"name":"Smartphone X","description":"Latest smartphone","price":799.99,"currency":"usd","stock":50,"weight":0.2,"category":"<categoryId>","brand":"<brandId>","availableColors":["Black","White"],"specification":[{"key":"RAM","value":"8GB"}],"keyFeatures":["5G Support"]}
+  data: {"name":"Smartphone X","description":"Latest smartphone","price":799.99,"stock":50,"weight":0.2,"category":"<categoryId>","brand":"<brandId>","colorOptions":[{"name":"Black","hex":"#000000"}],"attributes":[{"key":"Color","values":["Black","White"]},{"key":"Size","values":["S","M","L"]}],"hasVariants":true,"variants":[{"attributes":{"Color":"Black","Size":"M"},"price":799.99,"stock":20,"imageUrls":[{"publicId":"v1","url":"https://.../black-m.jpg","order":0}]}],"offerPrice":{"type":"flat","value":50,"startAt":"2026-08-01","endAt":"2026-08-31"},"availableColors":["Black","White"],"specification":[{"key":"RAM","value":"8GB"}],"keyFeatures":["5G Support"]}
   images: <file1> <file2> ... (max 10)
 ```
 
-Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `brand`. Optional: `slug`, `currency` (default `usd`), `stock` (default 0), `imageUrls`, `isActive` (default true), `availableColors`, `specification`, `keyFeatures`. `createdBy` is attached automatically from the authenticated admin.
+Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `brand`. Optional: `slug`, `stock` (default 0), `imageUrls`, `isActive` (default true), `availableColors`, `specification`, `keyFeatures`, `colorOptions`, `attributes` (variant axes `{ key, values }`), `variants` (SKUs auto-generated as `{PREFIX}-{COLOR}-{SIZE}-{RANDOM}` when omitted), `hasVariants`, `offerPrice`. **Do NOT send `currency`** — it inherits from the store's brand settings (`brand.currency`). `createdBy` is attached automatically. `offerPrice.endAt` must be after `startAt` (400 otherwise).
 
 **Response (201):**
 ```json
@@ -661,7 +681,14 @@ Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `b
 
 ### 7.4 PATCH /api/v1/product/:productId — Update product
 
-Protected — `admin`. **Multipart form-data** with `data` + `images` fields, same as create. Any subset of fields can be sent. If new `images` are uploaded they **replace** the existing `imageUrls`. `isActive` can be toggled `true`/`false` freely.
+Protected — `admin`. **Multipart form-data** with `data` + optional `images`. Any subset of fields can be sent. `isActive` can be toggled `true`/`false` freely.
+
+**Image management** — images are objects `{ publicId, url, order }` (`order: 0` = cover/first). On update:
+- `keepImages: [{ publicId, order }]` — existing images to keep, with new order (reorder by changing `order`).
+- `images` (multipart files) — new uploads, appended after the kept images.
+- `removedImageIds: ["<cloudinary publicId>"]` — images to **delete from Cloudinary** and drop.
+- Omit all three to leave images untouched.
+- **Variant images** — send the full `imageUrls` list per variant (objects `{ publicId, url, order }`, or plain URL strings, normalized server-side). For existing images, `{ publicId, order }` suffices — the `url` is backfilled from the stored variant by `publicId`.
 
 **Request:**
 ```
@@ -670,8 +697,8 @@ Authorization: Bearer <adminAccessToken>
 Content-Type: multipart/form-data
 
 Form fields:
-  data: {"name":"Smartphone X Pro","price":899.99,"isActive":true}
-  images: <file1> (optional, replaces imageUrls)
+  data: {"name":"Smartphone X Pro","price":899.99,"isActive":true,"keepImages":[{"publicId":"demo-ecommerce/abc123","order":1}],"removedImageIds":["demo-ecommerce/def456"],"offerPrice":{"type":"percentage","value":10,"startAt":"2026-08-01","endAt":"2026-08-31"},"variants":[{"sku":"SMAR-BLACK-M-7F3K9Q","attributes":{"Color":"Black","Size":"M"},"stock":15,"imageUrls":[{"publicId":"demo-ecommerce/variant-red","order":0}]}]}
+  images: <file1> (optional, appended after kept images)
 ```
 
 **Response (200):**
@@ -713,11 +740,11 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/order`
 
-Order model fields: `orderId` (auto-generated, e.g. `DE07D08M0001U`), `user` (ObjectId → User, or `null` for guest orders), `products[]` (`{product, quantity, unitPrice}`), `coupon`, `totalAmount`, `discount`, `deliveryCharge`, `finalAmount`, `currency`, `status`, `shippingAddress`, `recipientName`, `phoneNo`, `notes` (optional), `paymentMethod` (`COD` | `Online`), `paymentStatus` (`Pending` | `Paid` | `Failed`), `paymentProvider` (`stripe`/`sslcommerz`/`bkash`), gateway tracking fields (`stripeSessionId`, `sslSessionKey`, `transactionId`), FX fields (`fxRate`, `fxBaseCurrency`), timestamps.
+Order model fields: `orderId` (auto-generated, unguessable `DEXXXXXXXX`, e.g. `DEY2H7ULPD`), `user` (ObjectId → User, or `null` for guest orders), `products[]` (`{product, quantity, unitPrice}`), `coupon`, `totalAmount`, `discount`, `deliveryCharge`, `deliveryOptionName`, `finalAmount`, `currency`, `status`, `shippingAddress`, `recipientName`, `phoneNo`, `notes` (optional), `paymentMethod` (`COD` | `Online`), `paymentStatus` (`Pending` | `Paid` | `Failed`), `paymentProvider` (`stripe`/`sslcommerz`/`bkash`), gateway tracking fields (`stripeSessionId`, `sslSessionKey`, `transactionId`), FX fields (`fxRate`, `fxBaseCurrency`), timestamps.
 
-**All money fields are computed server-side** — the client never sends `totalAmount`, `discount`, `finalAmount`, or `unitPrice`. `currency` is inherited from the products (all products in an order must share the same currency, else 400).
+**All money fields are computed server-side** — the client never sends `totalAmount`, `discount`, `finalAmount`, `unitPrice`, or `deliveryCharge`. `deliveryCharge` is resolved from the chosen `deliveryOptionName` (brand settings). `currency` is inherited from the products (all products in an order must share the same currency, else 400).
 
-**Guest checkout:** `POST /order` requires **no auth**. Send a Bearer token to link the order to that user; omit it to order as a guest (`user: null`, orderId suffix `G`).
+**Guest checkout:** `POST /order` requires **no auth**. Send a Bearer token to link the order to that user; omit it to order as a guest (`user: null`).
 
 ### Order status lifecycle
 
@@ -813,7 +840,7 @@ Authorization: Bearer <accessToken>
 
 ### 8.4 POST /api/v1/order — Create order (guest checkout)
 
-**No auth required** — optional `Authorization` header. If a valid Bearer token is present the order is linked to that user (`orderId` suffix `U`); without a token it's a **guest order** (`user: null`, suffix `G`). Each product is validated (exists, not deleted, active, sufficient stock, same currency); stock is **decremented** on order creation inside a transaction.
+**No auth required** — optional `Authorization` header. If a valid Bearer token is present the order is linked to that user; without a token it's a **guest order** (`user: null`). Each product is validated (exists, not deleted, active, sufficient stock, same currency); stock is **decremented** on order creation inside a transaction.
 
 **Request:**
 ```
@@ -826,7 +853,7 @@ Content-Type: application/json
     { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 2 }
   ],
   "coupon": "SAVE20",
-  "deliveryCharge": 50,
+  "deliveryOptionName": "Inside Dhaka",
   "shippingAddress": "123 Main Street, Dhaka",
   "recipientName": "John Doe",
   "phoneNo": "+1 (555) 123-4567",
@@ -837,12 +864,12 @@ Content-Type: application/json
 
 - `products` — required, at least 1 item. Only `product` (id) and `quantity` are needed — `unitPrice` comes from the DB.
 - `coupon` — optional string (verified: exists, active, in date range, meets min order).
-- `deliveryCharge` — optional number, must be ≥ 0.
+- `deliveryOptionName` — **required** string. The customer picks an option from the store's brand settings (`Store Pickup`, `Inside Dhaka`, `Outside Dhaka`, `International`, ...); the backend resolves the `deliveryCharge` from that option. **The amount is never sent by the client.**
 - `shippingAddress` — required string.
 - `recipientName`, `phoneNo` — **required** strings (delivery recipient).
 - `notes` — optional string.
 - `paymentMethod` — `"COD"` or `"Online"`.
-- **Do not send** `totalAmount`, `discount`, `finalAmount`, `unitPrice`, `currency`, `user`, `orderId` — all computed/attached server-side.
+- **Do not send** `totalAmount`, `discount`, `finalAmount`, `deliveryCharge`, `unitPrice`, `currency`, `user`, `orderId` — all computed/attached server-side.
 
 **Response (201):**
 ```json
@@ -851,7 +878,7 @@ Content-Type: application/json
   "message": "Order created successfully",
   "data": {
     "_id": "666a1a2b3c4d5e6f7a8b9c0d",
-    "orderId": "DE07D08M0001U",
+    "orderId": "DEY2H7ULPD",
     "user": { "_id": "664f...", "name": "John Doe", "email": "customer@example.com" },
     "products": [{ "product": { "_id": "664f1a2b...", "name": "Smartphone X" }, "quantity": 2, "unitPrice": 799.99 }],
     "coupon": "SAVE20",
@@ -877,11 +904,11 @@ Content-Type: application/json
 
 ### 8.5 GET /api/v1/order/track-order/:orderId — Track order (public)
 
-Public — no auth. Looks up by the human-friendly `orderId` (e.g. `DE07D08M0001U`) or the Mongo `_id`. Returns delivery + payment tracking insights for a "track your order" page.
+Public — no auth. Looks up **only by the human-friendly `orderId`** (e.g. `DEY2H7ULPD`) — the Mongo `_id` is not accepted. Returns delivery + payment tracking insights for a "track your order" page.
 
 **Request:**
 ```
-GET /api/v1/order/track-order/DE07D08M0001U
+GET /api/v1/order/track-order/DEY2H7ULPD
 ```
 
 **Response (200):**
@@ -890,7 +917,7 @@ GET /api/v1/order/track-order/DE07D08M0001U
   "success": true,
   "message": "Order tracking details retrieved successfully",
   "data": {
-    "orderId": "DE07D08M0001U",
+    "orderId": "DEY2H7ULPD",
     "id": "666a1a2b3c4d5e6f7a8b9c0d",
     "status": "Processing",
     "paymentStatus": "Paid",
@@ -923,11 +950,18 @@ GET /api/v1/order/track-order/DE07D08M0001U
 
 Protected — `admin`, `customer` (owner). Returns invoice data as JSON for the frontend to render with react-pdf and a download button. **400 unless the order is `Paid`.**
 
-**Request:**
+**Request — by orderId or Mongo `_id` (default):**
 ```
 GET /api/v1/order/DE07D08M0001U/invoice
 Authorization: Bearer <accessToken>
 ```
+
+**Request — by gateway transactionId (opt-in):**
+```
+GET /api/v1/order/cs_test_abc123.../invoice?by=transactionId
+Authorization: Bearer <accessToken>
+```
+Use `?by=transactionId` on the payment success page to fetch the invoice straight from the `tran_id` returned by the gateway callback. When present, the param is matched **only** against `transactionId` (never `_id`, so it can't resolve to the wrong order). Without it, the lookup is `orderId` OR `_id` — existing callers are unaffected.
 
 **Response (200):**
 ```json
@@ -1664,7 +1698,7 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/review`
 
-Review model fields: `rating` (1–5), `description`, `user` (ObjectId → User, attached automatically), `product` (ObjectId → Product), `isFlagged`, `flaggedReason`, `isVerifiedPurchase`, timestamps. **One review per user per product** (unique index).
+Review model fields: `rating` (1–5), `description`, `user` (ObjectId → User, attached automatically), `product` (ObjectId → Product), `isFlagged`, `flaggedReason`, `isVerifiedPurchase`, timestamps. **One review per user per product** (unique index). `isVerifiedPurchase` is computed from the customer's orders — `true` only when they have a `Processing`/`Shipped`/`Completed` order containing that product.
 
 ### 14.1 GET /api/v1/review — Get all reviews
 
@@ -1718,9 +1752,36 @@ GET /api/v1/review/667d1a2b3c4d5e6f7a8b9c0d
 }
 ```
 
-### 14.3 POST /api/v1/review — Create review
+### 14.3 GET /api/v1/review/my-reviews — My reviews (customer)
 
-Protected — `customer` only (admin/manager tokens get `401 You are not authorized!`). Duplicate user+product reviews are rejected. On creation, the product's `averageRating` and `ratingCount` are **recalculated automatically**. `isVerifiedPurchase` is currently always `false` (order verification is a placeholder).
+Protected — `customer`. Returns the authenticated customer's own reviews (including flagged ones), with `user` and `product` populated.
+
+**Query params:** same QueryBuilder params as the public list (`searchTerm`, `page`, `limit`, `sort`, `fields`, plus `rating`, `product`, `isVerifiedPurchase` filters).
+
+**Request:**
+```
+GET /api/v1/review/my-reviews?page=1&limit=10
+Authorization: Bearer <customerAccessToken>
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "My reviews retrieved successfully",
+  "meta": { "page": 1, "limit": 10, "total": 2, "totalPage": 1 },
+  "data": [ { "...": "same structure as list item" } ]
+}
+```
+
+### 14.4 POST /api/v1/review — Create review
+
+Protected — `customer` only (admin/manager tokens get `401 You are not authorized!`). Validations:
+1. **Product exists + is active** — 404 "Product not found!" / 400 "Product is not available!".
+2. **No duplicate review** — one review per user per product → 409 "You have already reviewed this product!".
+3. **Verified purchase** — `isVerifiedPurchase` is computed server-side by looking up the customer's orders for this product. It is `true` only when they have a `Processing`/`Shipped`/`Completed` order containing the product (a `Pending` or `Cancelled` order does not count).
+
+On creation, the product's `averageRating` and `ratingCount` are **recalculated automatically**.
 
 **Request:**
 ```
@@ -1748,7 +1809,7 @@ Content-Type: application/json
     "product": { "_id": "664f1a2b...", "name": "Smartphone X", "slug": "smartphone-x" },
     "isFlagged": false,
     "flaggedReason": "",
-    "isVerifiedPurchase": false,
+    "isVerifiedPurchase": true,
     "createdAt": "2026-07-20T10:00:00.000Z",
     "updatedAt": "2026-07-20T10:00:00.000Z"
   }
@@ -1757,7 +1818,7 @@ Content-Type: application/json
 
 **Errors:** 404 "Product not found!" / 400 "Product is not available!" / 409 "You have already reviewed this product!"
 
-### 14.4 PATCH /api/v1/review/:reviewId/status — Toggle review flag (admin)
+### 14.5 PATCH /api/v1/review/:reviewId/status — Toggle review flag (admin)
 
 Protected — `admin`. Toggles `isFlagged`; flagged reviews are hidden from public reads and excluded from the product's rating calculation.
 
@@ -1776,7 +1837,7 @@ Authorization: Bearer <adminAccessToken>
 }
 ```
 
-### 14.5 DELETE /api/v1/review/:reviewId — Delete review (admin)
+### 14.6 DELETE /api/v1/review/:reviewId — Delete review (admin)
 
 Protected — `admin`. Hard deletes the review, removes it from the product's `reviews` array, and recalculates the product rating.
 
@@ -1807,11 +1868,11 @@ The Settings module is a **single singleton document** (`_id: "singleton"`) that
 ```json
 {
   "_id": "singleton",
-  "brand": { "name": "Attor", "tagline": "Essence of Distinction", "description": "Premium perfume oils crafted for the discerning.", "niche": "perfume_oil", "nicheLabel": "Perfume Oil", "logo": "/demo/perfume-oil/logo.png", "favicon": "" },
+  "brand": { "name": "Attor", "tagline": "Essence of Distinction", "description": "Premium perfume oils crafted for the discerning.", "niche": "perfume_oil", "nicheLabel": "Perfume Oil", "logo": "/demo/perfume-oil/logo.png", "favicon": "", "currency": "usd", "deliveryOptions": [ { "name": "Store Pickup", "charge": 0, "country": "", "isActive": true }, { "name": "Inside Dhaka", "charge": 90, "country": "BD", "isActive": true }, { "name": "Outside Dhaka", "charge": 150, "country": "BD", "isActive": true }, { "name": "International", "charge": 15, "country": "", "isActive": true } ] },
   "theme": {
-    "colors": { "primary": "oklch(0.514 0.222 16.935)", "primaryForeground": "oklch(0.969 0.015 12.422)", "background": "oklch(1 0 0)", "foreground": "oklch(0.145 0 0)", "...": "17 oklch CSS variables" },
-    "dark": { "enabled": false, "colors": {} },
-    "fonts": { "family": "Inter", "sizes": { "h1": "2.5rem", "h2": "2rem", "h3": "1.5rem", "body": "1rem", "small": "0.875rem" } },
+    "colors": { "background": "oklch(1 0 0)", "foreground": "oklch(0.145 0 0)", "primary": "oklch(0.514 0.222 16.935)", "primaryForeground": "oklch(0.969 0.015 12.422)", "...": "28 full CSS color tokens (base + chart + sidebar)" },
+    "dark": { "enabled": false, "colors": { "...": "dark overrides" } },
+    "fonts": { "family": "Cormorant Garamond", "mono": "ui-monospace, SFMono-Regular, Menlo, monospace", "sizes": { "h1": "2.5rem", "h2": "2rem", "h3": "1.5rem", "body": "1rem", "small": "0.875rem" } },
     "radius": "0.625rem",
     "globalCss": ""
   },
@@ -1868,10 +1929,11 @@ Authorization: Bearer <adminAccessToken>
 Content-Type: multipart/form-data
 
 Form fields:
-  data: {"brand":{"name":"Attor","tagline":"New tagline","description":"...","niche":"clothing","nicheLabel":"Clothing"}}
+  data: {"brand":{"name":"Attor","tagline":"New tagline","description":"...","niche":"clothing","nicheLabel":"Clothing","currency":"usd","deliveryOptions":[{"name":"Inside Dhaka","charge":90,"country":"BD","isActive":true},{"name":"International","charge":15,"isActive":true}]}}
   logo: <image file> (optional)
   favicon: <image file> (optional)
 ```
+Only provided brand fields are updated (unprovided ones keep their value). `currency` (single code string = active store currency; must be `usd`/`bdt`/`eur`/`gbp`/`inr`/`aed`/`aud`/`cad` — invalid codes rejected with 400) and `deliveryOptions` (used by order creation to resolve `deliveryCharge`) are optional.
 
 **Response (200):**
 ```json
@@ -1914,7 +1976,7 @@ Content-Type: application/json
 
 ### 15.4 PATCH /api/v1/settings/preset/:niche — Apply niche preset (admin)
 
-Protected — `admin`. Applies a full niche preset (brand + hero + about + contact + footer) in one write. Valid niches: `clothing`, `perfume_oil`, `eyewear`. Unknown → 400.
+Protected — `admin`. Applies a full niche preset (**brand + theme + hero + about + contact + footer**) in one write. Each niche ships its own theme (colors light+dark, fonts, radius): `clothing` → warm fashion palette + Playfair Display, `perfume_oil` → classic amber/rose palette + Cormorant Garamond, `eyewear` → cool blue/violet palette + Space Grotesk. Valid niches: `clothing`, `perfume_oil`, `eyewear`. Unknown → 400.
 
 **Request:**
 ```
@@ -2206,15 +2268,16 @@ When sending these fields (e.g. `category` on product create), send the **plain 
 | 47 | PATCH | `/api/v1/category/:id` | admin | ✅ `data` + `icon` |
 | 48 | DELETE | `/api/v1/category/:id` | admin | – |
 | 49 | GET | `/api/v1/review` | – | – |
-| 50 | GET | `/api/v1/review/:reviewId` | – | – |
-| 51 | POST | `/api/v1/review` | customer | – |
-| 52 | PATCH | `/api/v1/review/:reviewId/status` | admin | – |
-| 53 | DELETE | `/api/v1/review/:reviewId` | admin | – |
-| 54 | GET | `/api/v1/settings` | – | – |
-| 55 | PATCH | `/api/v1/settings` | admin | ✅ `data` + `logo` + `favicon` |
-| 56 | PATCH | `/api/v1/settings/:section` | admin | ✅ `data` + `images` (hero/testimonials/about/limitedOffer) |
-| 57 | PATCH | `/api/v1/settings/preset/:niche` | admin | – |
-| 58 | GET | `/api/v1/activity` | admin | – |
-| 59 | GET | `/api/v1/activity/:activityId` | admin | – |
-| 60 | PATCH | `/api/v1/activity/:activityId/clear` | admin | – |
-| 61 | PATCH | `/api/v1/activity/clear` | admin | – |
+| 50 | GET | `/api/v1/review/my-reviews` | customer | – |
+| 51 | GET | `/api/v1/review/:reviewId` | – | – |
+| 52 | POST | `/api/v1/review` | customer | – |
+| 53 | PATCH | `/api/v1/review/:reviewId/status` | admin | – |
+| 54 | DELETE | `/api/v1/review/:reviewId` | admin | – |
+| 55 | GET | `/api/v1/settings` | – | – |
+| 56 | PATCH | `/api/v1/settings` | admin | ✅ `data` + `logo` + `favicon` |
+| 57 | PATCH | `/api/v1/settings/:section` | admin | ✅ `data` + `images` (hero/testimonials/about/limitedOffer) |
+| 58 | PATCH | `/api/v1/settings/preset/:niche` | admin | – |
+| 59 | GET | `/api/v1/activity` | admin | – |
+| 60 | GET | `/api/v1/activity/:activityId` | admin | – |
+| 61 | PATCH | `/api/v1/activity/:activityId/clear` | admin | – |
+| 62 | PATCH | `/api/v1/activity/clear` | admin | – |

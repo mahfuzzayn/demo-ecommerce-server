@@ -28,13 +28,7 @@ const userProfileUpdateSchema = z.object({
     body: z
         .object({
             name: z.string().min(1, "Name is required").optional(),
-            phoneNo: z
-                .string()
-                .regex(
-                    /^\d{11}$/,
-                    "Phone number must be exactly 11 digits long",
-                )
-                .optional(),
+            phoneNo: z.string().min(10).max(14).optional(),
             gender: z
                 .enum(["Male", "Female", "Other"])
                 .default("Other")
@@ -52,9 +46,11 @@ const userProfileUpdateSchema = z.object({
             country: z.string().optional(),
             photoUrl: z
                 .string()
-                .regex(
-                    /^(http(s)?:\/\/.*\.(?:png|jpg|jpeg))$/,
-                    "Invalid photo URL format. Must be a valid image URL.",
+                .refine(
+                    (value) =>
+                        value === "" ||
+                        /^(http(s)?:\/\/.*\.(?:png|jpg|jpeg))$/.test(value),
+                    "Invalid photo URL format. Must be a valid image URL or empty to remove.",
                 )
                 .optional(),
         })

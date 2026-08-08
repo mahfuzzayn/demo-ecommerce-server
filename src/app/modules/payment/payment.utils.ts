@@ -10,6 +10,16 @@ import { CURRENCY_BDT } from "./payment.constant";
 import AppError from "../../errors/appError";
 import { StatusCodes } from "http-status-codes";
 
+// Guard: an already-paid order cannot be re-initialized
+export const ensureOrderCanInitPayment = (order: any) => {
+    if (order.paymentStatus === "Paid") {
+        throw new AppError(
+            StatusCodes.BAD_REQUEST,
+            "This order has already been paid!",
+        );
+    }
+};
+
 /**
  * Generates a transaction ID in the format: DE{HHmmAM/PM}{DDMMYYYY}{suffix}
  * Example: DE0402AM31072026A7K9

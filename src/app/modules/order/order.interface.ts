@@ -42,7 +42,10 @@ export interface IOrder extends Document {
     coupon?: string | null;
     totalAmount: number;
     discount: number;
+    // Resolved server-side from the selected delivery option (brand settings).
     deliveryCharge: number;
+    // The delivery option NAME the customer picked (e.g. "Inside Dhaka").
+    deliveryOptionName?: string;
     finalAmount: number;
     currency: Currency;
     status: OrderStatus;

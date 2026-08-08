@@ -6,8 +6,8 @@ The Settings module manages all site-wide configuration as a **single singleton 
 ## How It Works
 - **Singleton document** – One document, one `_id` (`"singleton"`). Created at deploy time via the seed script (`npm run seed:settings`), prefilled from the default niche preset (`perfume_oil`).
 - **Get settings** – Public route. Returns the whole singleton, cached in memory; the second read is served from cache until a write invalidates it.
-- **Update brand** – Admin-only. Updates the `brand` sub-doc (`name`, `tagline`, `description`, `niche`, `nicheLabel`, `logo` file upload, `favicon` file upload) via `$set`.
-- **Update section** – Admin-only. Updates a single section (`theme`, `hero`, `testimonials`, `navbar`, `footer`, `contact`, `about`, `limitedOffer`) via `$set` with `runValidators: true`. Unknown section → 400, invalid body → 400.
+- **Update brand** – Admin-only. Updates only the `brand` fields you provide (`name`, `tagline`, `description`, `niche`, `nicheLabel`, plus `logo`/`favicon` file uploads). **Unprovided fields are preserved** — sending only `name` keeps the existing logo/favicon.
+- **Update section** – Admin-only. Updates a single section (`theme`, `hero`, `testimonials`, `navbar`, `footer`, `contact`, `about`, `limitedOffer`) via `$set` with `runValidators: true`. **Every section uses the same `multipart/form-data` shape: a `data` field (JSON string of the section body) + an optional `images` file field** (mapped positionally for hero/testimonials/about/limitedOffer). Unknown section → 400, invalid body → 400.
 - **Niche presets** – Admin-only `PATCH /settings/preset/:niche` applies a full preset (`clothing` | `perfume_oil` | `eyewear`) from `settings.presets.ts` in one write.
 - **Image uploads** – Positional, same semantics as the Product module: re-send the whole section; uploaded files map by index (hero → `slides[i].image`, testimonials → `items[i].avatar`, about/limitedOffer → `image`).
 - **Cache invalidation** – Every write invalidates the in-memory cache. The cache is single-instance only; use Redis (or a short TTL) when running multiple server instances.
@@ -36,36 +36,125 @@ No auth required — the storefront/frontend needs this to render.
             "description": "Premium perfume oils crafted for the discerning.",
             "niche": "perfume_oil",
             "nicheLabel": "Perfume Oil",
-            "logo": "https://res.cloudinary.com/.../logo.png",
-            "favicon": "https://res.cloudinary.com/.../favicon.ico"
+            "logo": "/demo/perfume-oil/logo.png",
+            "favicon": "",
+            "currency": "usd",
+            "deliveryOptions": [
+                { "name": "Store Pickup", "charge": 0, "country": "", "isActive": true },
+                { "name": "Inside Dhaka", "charge": 90, "country": "BD", "isActive": true },
+                { "name": "Outside Dhaka", "charge": 150, "country": "BD", "isActive": true },
+                { "name": "International", "charge": 15, "country": "", "isActive": true }
+            ]
         },
         "theme": {
             "colors": {
+                "background": "oklch(1 0 0)",
+                "foreground": "oklch(0.145 0 0)",
+                "card": "oklch(1 0 0)",
+                "cardForeground": "oklch(0.145 0 0)",
+                "popover": "oklch(1 0 0)",
+                "popoverForeground": "oklch(0.145 0 0)",
                 "primary": "oklch(0.514 0.222 16.935)",
                 "primaryForeground": "oklch(0.969 0.015 12.422)",
                 "secondary": "oklch(0.967 0.001 286.375)",
-                "background": "oklch(1 0 0)",
-                "foreground": "oklch(0.145 0 0)",
+                "secondaryForeground": "oklch(0.21 0.006 285.885)",
+                "muted": "oklch(0.97 0 0)",
+                "mutedForeground": "oklch(0.556 0 0)",
+                "accent": "oklch(0.97 0 0)",
+                "accentForeground": "oklch(0.205 0 0)",
+                "destructive": "oklch(0.577 0.245 27.325)",
                 "border": "oklch(0.922 0 0)",
+                "input": "oklch(0.922 0 0)",
                 "ring": "oklch(0.708 0 0)",
-                "card": "oklch(1 0 0)",
-                "popover": "oklch(1 0 0)",
-                "...": "all 17 CSS variables from global.css"
+                "chart1": "oklch(0.81 0.117 11.638)",
+                "chart2": "oklch(0.645 0.246 16.439)",
+                "chart3": "oklch(0.586 0.253 17.585)",
+                "chart4": "oklch(0.514 0.222 16.935)",
+                "chart5": "oklch(0.455 0.188 13.697)",
+                "sidebar": "oklch(0.985 0 0)",
+                "sidebarForeground": "oklch(0.145 0 0)",
+                "sidebarPrimary": "oklch(0.586 0.253 17.585)",
+                "sidebarPrimaryForeground": "oklch(0.969 0.015 12.422)",
+                "sidebarAccent": "oklch(0.97 0 0)",
+                "sidebarAccentForeground": "oklch(0.205 0 0)",
+                "sidebarBorder": "oklch(0.922 0 0)",
+                "sidebarRing": "oklch(0.708 0 0)"
             },
-            "dark": { "enabled": true, "colors": { "...": "dark values" } },
-            "fonts": { "family": "Inter", "sizes": { "h1": "2.5rem", "h2": "2rem", "h3": "1.5rem", "body": "1rem", "small": "0.875rem" } },
+            "dark": {
+                "enabled": true,
+                "colors": {
+                    "background": "oklch(0.145 0 0)",
+                    "foreground": "oklch(0.985 0 0)",
+                    "card": "oklch(0.205 0 0)",
+                    "cardForeground": "oklch(0.985 0 0)",
+                    "popover": "oklch(0.205 0 0)",
+                    "popoverForeground": "oklch(0.985 0 0)",
+                    "primary": "oklch(0.455 0.188 13.697)",
+                    "primaryForeground": "oklch(0.969 0.015 12.422)",
+                    "secondary": "oklch(0.274 0.006 286.033)",
+                    "secondaryForeground": "oklch(0.985 0 0)",
+                    "muted": "oklch(0.269 0 0)",
+                    "mutedForeground": "oklch(0.708 0 0)",
+                    "accent": "oklch(0.269 0 0)",
+                    "accentForeground": "oklch(0.985 0 0)",
+                    "destructive": "oklch(0.704 0.191 22.216)",
+                    "border": "oklch(1 0 0 / 10%)",
+                    "input": "oklch(1 0 0 / 15%)",
+                    "ring": "oklch(0.556 0 0)",
+                    "chart1": "oklch(0.81 0.117 11.638)",
+                    "chart2": "oklch(0.645 0.246 16.439)",
+                    "chart3": "oklch(0.586 0.253 17.585)",
+                    "chart4": "oklch(0.514 0.222 16.935)",
+                    "chart5": "oklch(0.455 0.188 13.697)",
+                    "sidebar": "oklch(0.21 0.006 285.885)",
+                    "sidebarForeground": "oklch(0.985 0 0)",
+                    "sidebarPrimary": "oklch(0.645 0.246 16.439)",
+                    "sidebarPrimaryForeground": "oklch(0.969 0.015 12.422)",
+                    "sidebarAccent": "oklch(0.269 0 0)",
+                    "sidebarAccentForeground": "oklch(0.985 0 0)",
+                    "sidebarBorder": "oklch(1 0 0 / 10%)",
+                    "sidebarRing": "oklch(0.556 0 0)"
+                }
+            },
+            "fonts": {
+                "family": "Cormorant Garamond",
+                "mono": "ui-monospace, SFMono-Regular, Menlo, monospace",
+                "sizes": {
+                    "h1": "2.5rem",
+                    "h2": "2rem",
+                    "h3": "1.5rem",
+                    "body": "1rem",
+                    "small": "0.875rem"
+                }
+            },
             "radius": "0.625rem",
             "globalCss": ""
         },
         "hero": {
             "slides": [
                 {
-                    "image": "https://res.cloudinary.com/.../hero-1.jpg",
+                    "image": "/demo/perfume-oil/banner/hero-1.webp",
                     "headline": "Discover Your Signature Scent",
-                    "subtext": "Explore our curated collection...",
+                    "subtext": "Explore our curated collection of artisanal perfume oils - from deep, smoky ouds to luminous florals. Find the fragrance that speaks to you.",
                     "ctaText": "Explore Collection",
-                    "ctaLink": "/shop",
+                    "ctaLink": "/products",
                     "order": 0
+                },
+                {
+                    "image": "/demo/perfume-oil/banner/hero-2.webp",
+                    "headline": "The Art of Oud",
+                    "subtext": "Journey through our collection of rare and precious oud oils - aged, layered, and utterly unforgettable.",
+                    "ctaText": "Shop Oud Collection",
+                    "ctaLink": "/products?category=oud",
+                    "order": 1
+                },
+                {
+                    "image": "/demo/perfume-oil/banner/hero-3.webp",
+                    "headline": "Bloom in Every Drop",
+                    "subtext": "From Damask rose to jasmine sambac - our floral attars capture nature's most exquisite moments in every bottle.",
+                    "ctaText": "Shop Florals",
+                    "ctaLink": "/products?category=floral",
+                    "order": 2
                 }
             ]
         },
@@ -73,32 +162,96 @@ No auth required — the storefront/frontend needs this to render.
             "heading": "What Our Customers Say",
             "items": [
                 {
-                    "name": "John Doe",
-                    "role": "Verified Buyer",
-                    "quote": "Amazing quality!",
+                    "name": "Ayesha Rahman",
+                    "role": "Fragrance Collector",
+                    "quote": "The Midnight Oud is absolutely intoxicating. I've never worn anything like it - one drop lasts all day and I get stopped by strangers asking what I'm wearing.",
                     "rating": 5,
-                    "avatar": "https://.../avatar.jpg",
+                    "avatar": "/demo/perfume-oil/testimonials/tm-3.jpg",
                     "order": 0
+                },
+                {
+                    "name": "Omar Hassan",
+                    "role": "Perfumery Enthusiast",
+                    "quote": "I've been collecting ouds for over a decade and the quality here rivals houses that charge five times the price. The Oud & Rose Sublime is a work of art.",
+                    "rating": 5,
+                    "avatar": "/demo/perfume-oil/testimonials/tm-1.jpg",
+                    "order": 1
+                },
+                {
+                    "name": "Priya Kapoor",
+                    "role": "Lifestyle Blogger",
+                    "quote": "The Damask Rose Attar is the most beautiful rose fragrance I've ever worn. It's real rose - not synthetic - and it blooms differently on my skin every hour.",
+                    "rating": 5,
+                    "avatar": "/demo/perfume-oil/testimonials/tm-2.jpeg",
+                    "order": 2
+                },
+                {
+                    "name": "Daniel Choi",
+                    "role": "Creative Director",
+                    "quote": "White Tea & Musk is my daily signature now. Clean, subtle, but somehow everyone notices. It's the kind of scent that makes people lean in closer.",
+                    "rating": 5,
+                    "avatar": "/demo/perfume-oil/testimonials/tm-4.jpeg",
+                    "order": 3
                 }
             ]
         },
         "navbar": {
             "links": [
-                { "label": "Shop", "url": "/shop", "order": 0, "children": [{ "label": "Men", "url": "/shop?category=men", "order": 0 }] }
+                { "label": "Home", "url": "/", "order": 0, "children": [] },
+                { "label": "Products", "url": "/products", "order": 1, "children": [] },
+                { "label": "About", "url": "/about", "order": 2, "children": [] },
+                { "label": "Contact", "url": "/contact", "order": 3, "children": [] }
             ],
             "groups": {
-                "public": [{ "label": "Home", "url": "/" }],
-                "auth": [{ "label": "Login", "url": "/login" }],
-                "customer": [{ "label": "My Account", "url": "/account" }],
-                "admin": [{ "label": "Admin", "url": "/admin" }]
+                "public": [
+                    { "label": "Home", "url": "/", "order": 0, "children": [] },
+                    { "label": "Products", "url": "/products", "order": 1, "children": [] },
+                    { "label": "About", "url": "/about", "order": 2, "children": [] },
+                    { "label": "Contact", "url": "/contact", "order": 3, "children": [] }
+                ],
+                "auth": [
+                    { "label": "Login", "url": "/login", "order": 0, "children": [] },
+                    { "label": "Sign Up", "url": "/signup", "order": 1, "children": [] }
+                ],
+                "customer": [
+                    { "label": "My Account", "url": "/dashboard/customer", "order": 0, "children": [] }
+                ],
+                "admin": [
+                    { "label": "Admin Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }
+                ]
             }
         },
         "footer": {
-            "description": "Artisanal perfume oils...",
-            "columns": [{ "title": "Shop", "links": [{ "label": "Oud", "url": "/shop?category=oud" }] }],
-            "socialLinks": [{ "platform": "facebook", "url": "https://facebook.com/attor" }],
+            "description": "Artisanal perfume oils crafted for those who seek the extraordinary. Pure ingredients, timeless scents, and a story in every drop.",
+            "columns": [
+                {
+                    "title": "Quick Links",
+                    "links": [
+                        { "label": "Products", "url": "/products" },
+                        { "label": "About", "url": "/about" },
+                        { "label": "Contact", "url": "/contact" },
+                        { "label": "Dashboard", "url": "/dashboard" }
+                    ]
+                },
+                {
+                    "title": "Contact",
+                    "links": [
+                        { "label": "123 Perfume Avenue, New York, NY 10001", "url": "/contact" },
+                        { "label": "+1 (555) 123-4567", "url": "/contact" },
+                        { "label": "hello@attor.com", "url": "/contact" }
+                    ]
+                }
+            ],
+            "socialLinks": [
+                { "platform": "twitter", "url": "https://twitter.com/attor" },
+                { "platform": "instagram", "url": "https://instagram.com/attor" },
+                { "platform": "facebook", "url": "https://facebook.com/attor" }
+            ],
             "copyrightText": "© 2026 Attor. All rights reserved.",
-            "newsletter": { "enabled": true, "heading": "Subscribe for exclusive offers" }
+            "newsletter": {
+                "enabled": true,
+                "heading": "Stay in the loop"
+            }
         },
         "contact": {
             "address": "123 Perfume Avenue, New York, NY 10001",
@@ -106,22 +259,29 @@ No auth required — the storefront/frontend needs this to render.
             "email": "hello@attor.com",
             "hours": "Mon–Sat 9am–6pm",
             "mapEmbedUrl": "",
-            "social": { "twitter": "https://twitter.com/attor", "instagram": "https://instagram.com/attor", "facebook": "https://facebook.com/attor" }
+            "social": {
+                "twitter": "https://twitter.com/attor",
+                "instagram": "https://instagram.com/attor",
+                "facebook": "https://facebook.com/attor"
+            }
         },
         "about": {
-            "story": "Attor began with a passion...",
-            "mission": "We believe fragrance is the most intimate...",
-            "image": "https://.../about.jpeg",
-            "stats": [{ "label": "Founded", "value": "2018" }]
+            "story": "Attor began with a passion for the ancient art of perfumery. Rooted in tradition yet crafted for the modern connoisseur, each of our perfume oils is a journey - from the misty forests of Assam to the sun-drenched gardens of Grasse. We work directly with distillers and growers to bring you the purest expressions of nature's most precious botanicals.",
+            "mission": "We believe fragrance is the most intimate form of expression. Our mission is to make artisanal perfume oils accessible - offering uncompromising quality, ethical sourcing, and a sensory experience that transcends the ordinary.",
+            "image": "/demo/perfume-oil/about.jpeg",
+            "stats": [
+                { "label": "Founded", "value": "2018" },
+                { "label": "Oud Variants", "value": "30+" }
+            ]
         },
         "limitedOffer": {
-            "enabled": false,
+            "enabled": true,
             "badge": "Limited Time",
-            "title": "Summer Sale",
-            "subtitle": "Up to 50% off",
+            "title": "Midnight Oud",
+            "subtitle": "Aged 12 months in teak barrels. Rare Assamese and Cambodian oud - now available at an exclusive introductory price.",
             "ctaText": "Shop Now",
-            "ctaLink": "/sale",
-            "image": "",
+            "ctaLink": "/products/midnight-oud",
+            "image": "/demo/perfume-oil/products/product-1.webp",
             "endsAt": "2026-08-31T23:59:59.000Z"
         },
         "createdAt": "2026-01-01T00:00:00.000Z",
@@ -132,57 +292,359 @@ No auth required — the storefront/frontend needs this to render.
 If not seeded yet, returns 404 with `"Settings not seeded. Run the settings seed script."`
 
 ### PATCH /api/v1/settings (Update Brand — Admin)
-**Request:**
+Updates only the fields you provide. **logo/favicon are only changed when a file is uploaded — otherwise they keep their current value.**
+
+**Request (multipart/form-data):**
 ```
 PATCH /api/v1/settings
 Authorization: Bearer <admin_token>
 Content-Type: multipart/form-data
 
 Fields:
-  data: { "brand": { "name": "Attor", "tagline": "New tagline", "description": "...", "niche": "clothing", "nicheLabel": "Clothing" } }
+  data: { "brand": { "name": "Attor", "tagline": "Essence of Distinction", "description": "Premium perfume oils crafted for the discerning.", "niche": "perfume_oil", "nicheLabel": "Perfume Oil" } }
   logo: [optional file upload]
   favicon: [optional file upload]
 ```
+
+**Request (application/json — text fields only):**
+```
+PATCH /api/v1/settings
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+
+{
+    "brand": {
+        "name": "Attor",
+        "tagline": "Essence of Distinction",
+        "niche": "perfume_oil",
+        "currency": "usd",
+        "deliveryOptions": [
+            { "name": "Store Pickup", "charge": 0, "country": "", "isActive": true },
+            { "name": "Inside Dhaka", "charge": 90, "country": "BD", "isActive": true },
+            { "name": "Outside Dhaka", "charge": 150, "country": "BD", "isActive": true },
+            { "name": "International", "charge": 15, "country": "", "isActive": true }
+        ]
+    }
+}
+```
+Note: `currency` (single code string, e.g. `"usd"`, `"bdt"` — must be one of `usd`/`bdt`/`eur`/`gbp`/`inr`/`aed`/`aud`/`cad`, invalid codes are rejected with 400) and `deliveryOptions` are optional — send them only when changing them. `currency` is the store's active currency that new products inherit.
 
 **Response:**
 ```json
 {
     "success": true,
     "message": "Settings updated successfully",
-    "data": { "_id": "singleton", "brand": { "...": "updated brand" }, "...": "rest of settings" }
+    "data": { "...": "whole updated settings document" }
 }
 ```
+Note: Sending an empty body → 400 `"No brand fields provided to update!"`.
 
-### PATCH /api/v1/settings/hero (Update Section — Admin)
-**Request:**
+### PATCH /api/v1/settings/:section (Update Section — Admin)
+
+**Every section uses the exact same request format.** The route is `multerUpload.array("images", 20)` + `parseBody`, so **all** section updates are sent as `multipart/form-data` with exactly two fields:
+
+| Form field | Type | Description |
+|---|---|---|
+| `data` | JSON string | The section body (JSON) — **always required**, even for sections with no images |
+| `images` | files (optional, max 20) | Uploaded files, mapped into the section by position (only for hero/testimonials/about/limitedOffer) |
+
 ```
-PATCH /api/v1/settings/hero
+PATCH /api/v1/settings/:section
 Authorization: Bearer <admin_token>
-Content-Type: application/json
+Content-Type: multipart/form-data
 
+data:   <JSON string of the section body>
+images: <optional file1, file2, ...>
+```
+
+> **Important:** because `parseBody` reads `req.body.data`, sending a plain `application/json` body (without the `data` key) fails with `400 "Please provide data in the body under data key"`. Always wrap the JSON in a `data` form field, and send images (if any) in the `images` form field.
+
+**How images map into the section body:**
+
+| Section | `images` mapping |
+|---|---|
+| `hero` | `images[i]` → `slides[i].image` (by index) |
+| `testimonials` | `images[i]` → `items[i].avatar` (by index) |
+| `about` | `images[0]` → `image` |
+| `limitedOffer` | `images[0]` → `image` |
+| `theme`, `navbar`, `footer`, `contact` | no images — send only the `data` field |
+
+All section writes return the whole updated settings document. Below is the **complete real `data` value for each section** (what goes inside the `data` form field).
+
+**`PATCH /api/v1/settings/theme`** — form field `data`:
+```json
+{
+    "colors": {
+        "background": "oklch(1 0 0)",
+        "foreground": "oklch(0.145 0 0)",
+        "card": "oklch(1 0 0)",
+        "cardForeground": "oklch(0.145 0 0)",
+        "popover": "oklch(1 0 0)",
+        "popoverForeground": "oklch(0.145 0 0)",
+        "primary": "oklch(0.514 0.222 16.935)",
+        "primaryForeground": "oklch(0.969 0.015 12.422)",
+        "secondary": "oklch(0.967 0.001 286.375)",
+        "secondaryForeground": "oklch(0.21 0.006 285.885)",
+        "muted": "oklch(0.97 0 0)",
+        "mutedForeground": "oklch(0.556 0 0)",
+        "accent": "oklch(0.97 0 0)",
+        "accentForeground": "oklch(0.205 0 0)",
+        "destructive": "oklch(0.577 0.245 27.325)",
+        "border": "oklch(0.922 0 0)",
+        "input": "oklch(0.922 0 0)",
+        "ring": "oklch(0.708 0 0)",
+        "chart1": "oklch(0.81 0.117 11.638)",
+        "chart2": "oklch(0.645 0.246 16.439)",
+        "chart3": "oklch(0.586 0.253 17.585)",
+        "chart4": "oklch(0.514 0.222 16.935)",
+        "chart5": "oklch(0.455 0.188 13.697)",
+        "sidebar": "oklch(0.985 0 0)",
+        "sidebarForeground": "oklch(0.145 0 0)",
+        "sidebarPrimary": "oklch(0.586 0.253 17.585)",
+        "sidebarPrimaryForeground": "oklch(0.969 0.015 12.422)",
+        "sidebarAccent": "oklch(0.97 0 0)",
+        "sidebarAccentForeground": "oklch(0.205 0 0)",
+        "sidebarBorder": "oklch(0.922 0 0)",
+        "sidebarRing": "oklch(0.708 0 0)"
+    },
+    "dark": {
+        "enabled": true,
+        "colors": {
+            "background": "oklch(0.145 0 0)",
+            "foreground": "oklch(0.985 0 0)",
+            "card": "oklch(0.205 0 0)",
+            "cardForeground": "oklch(0.985 0 0)",
+            "popover": "oklch(0.205 0 0)",
+            "popoverForeground": "oklch(0.985 0 0)",
+            "primary": "oklch(0.455 0.188 13.697)",
+            "primaryForeground": "oklch(0.969 0.015 12.422)",
+            "secondary": "oklch(0.274 0.006 286.033)",
+            "secondaryForeground": "oklch(0.985 0 0)",
+            "muted": "oklch(0.269 0 0)",
+            "mutedForeground": "oklch(0.708 0 0)",
+            "accent": "oklch(0.269 0 0)",
+            "accentForeground": "oklch(0.985 0 0)",
+            "destructive": "oklch(0.704 0.191 22.216)",
+            "border": "oklch(1 0 0 / 10%)",
+            "input": "oklch(1 0 0 / 15%)",
+            "ring": "oklch(0.556 0 0)",
+            "chart1": "oklch(0.81 0.117 11.638)",
+            "chart2": "oklch(0.645 0.246 16.439)",
+            "chart3": "oklch(0.586 0.253 17.585)",
+            "chart4": "oklch(0.514 0.222 16.935)",
+            "chart5": "oklch(0.455 0.188 13.697)",
+            "sidebar": "oklch(0.21 0.006 285.885)",
+            "sidebarForeground": "oklch(0.985 0 0)",
+            "sidebarPrimary": "oklch(0.645 0.246 16.439)",
+            "sidebarPrimaryForeground": "oklch(0.969 0.015 12.422)",
+            "sidebarAccent": "oklch(0.269 0 0)",
+            "sidebarAccentForeground": "oklch(0.985 0 0)",
+            "sidebarBorder": "oklch(1 0 0 / 10%)",
+            "sidebarRing": "oklch(0.556 0 0)"
+        }
+    },
+    "fonts": {
+        "family": "Cormorant Garamond",
+        "mono": "ui-monospace, SFMono-Regular, Menlo, monospace",
+        "sizes": {
+            "h1": "2.5rem",
+            "h2": "2rem",
+            "h3": "1.5rem",
+            "body": "1rem",
+            "small": "0.875rem"
+        }
+    },
+    "radius": "0.625rem",
+    "globalCss": ""
+}
+```
+> **Partial update:** you only send the fields you want to change inside `data` (e.g. `{ "colors": { "primary": "oklch(0.2 0.1 300)" } }`). Unprovided theme fields keep their current values.
+
+**`PATCH /api/v1/settings/hero`** — form field `data` (+ `images` files → `slides[i].image`):
+```json
 {
     "slides": [
-        { "image": "https://.../hero.jpg", "headline": "New Hero Title", "subtext": "Summer Sale", "ctaText": "Shop Now", "ctaLink": "/shop", "order": 0 }
+        {
+            "image": "/demo/perfume-oil/banner/hero-1.webp",
+            "headline": "Discover Your Signature Scent",
+            "subtext": "Explore our curated collection of artisanal perfume oils - from deep, smoky ouds to luminous florals. Find the fragrance that speaks to you.",
+            "ctaText": "Explore Collection",
+            "ctaLink": "/products",
+            "order": 0
+        },
+        {
+            "image": "/demo/perfume-oil/banner/hero-2.webp",
+            "headline": "The Art of Oud",
+            "subtext": "Journey through our collection of rare and precious oud oils - aged, layered, and utterly unforgettable.",
+            "ctaText": "Shop Oud Collection",
+            "ctaLink": "/products?category=oud",
+            "order": 1
+        },
+        {
+            "image": "/demo/perfume-oil/banner/hero-3.webp",
+            "headline": "Bloom in Every Drop",
+            "subtext": "From Damask rose to jasmine sambac - our floral attars capture nature's most exquisite moments in every bottle.",
+            "ctaText": "Shop Florals",
+            "ctaLink": "/products?category=floral",
+            "order": 2
+        }
     ]
 }
 ```
-For image uploads, use multipart:
-```
-Content-Type: multipart/form-data
+In Postman: `body` → `form-data` → add `data` (set the JSON above as the value) and add `images` (type file, one per slide; `images[0]` → `slides[0].image`, `images[1]` → `slides[1].image`, ...).
 
-data: { "slides": [{ "headline": "Banner 1", "subtext": "...", "ctaText": "Shop", "ctaLink": "/shop", "order": 0 }, { "headline": "Banner 2", "...": "..." }] }
-images: [file1, file2]   // mapped to slides[0].image, slides[1].image by index
+**`PATCH /api/v1/settings/testimonials`** — form field `data` (+ `images` files → `items[i].avatar`):
+```json
+{
+    "heading": "What Our Customers Say",
+    "items": [
+        {
+            "name": "Ayesha Rahman",
+            "role": "Fragrance Collector",
+            "quote": "The Midnight Oud is absolutely intoxicating. I've never worn anything like it - one drop lasts all day and I get stopped by strangers asking what I'm wearing.",
+            "rating": 5,
+            "avatar": "/demo/perfume-oil/testimonials/tm-3.jpg",
+            "order": 0
+        },
+        {
+            "name": "Omar Hassan",
+            "role": "Perfumery Enthusiast",
+            "quote": "I've been collecting ouds for over a decade and the quality here rivals houses that charge five times the price. The Oud & Rose Sublime is a work of art.",
+            "rating": 5,
+            "avatar": "/demo/perfume-oil/testimonials/tm-1.jpg",
+            "order": 1
+        },
+        {
+            "name": "Priya Kapoor",
+            "role": "Lifestyle Blogger",
+            "quote": "The Damask Rose Attar is the most beautiful rose fragrance I've ever worn. It's real rose - not synthetic - and it blooms differently on my skin every hour.",
+            "rating": 5,
+            "avatar": "/demo/perfume-oil/testimonials/tm-2.jpeg",
+            "order": 2
+        },
+        {
+            "name": "Daniel Choi",
+            "role": "Creative Director",
+            "quote": "White Tea & Musk is my daily signature now. Clean, subtle, but somehow everyone notices. It's the kind of scent that makes people lean in closer.",
+            "rating": 5,
+            "avatar": "/demo/perfume-oil/testimonials/tm-4.jpeg",
+            "order": 3
+        }
+    ]
+}
 ```
-Response shape mirrors the GET response — the whole updated document.
+In Postman: `data` + `images` (one file per item; `images[i]` → `items[i].avatar`).
 
-**Other sections (same pattern, different body shape):**
-- `PATCH /api/v1/settings/theme` — `{ "colors": { "primary": "#1a1a1a" }, "dark": { "enabled": true }, "fonts": { "family": "Inter" }, "radius": "0.625rem", "globalCss": "..." }`
-- `PATCH /api/v1/settings/testimonials` — `{ "heading": "...", "items": [{ "name": "...", "quote": "...", "rating": 5 }] }` (+ `images` for avatars)
-- `PATCH /api/v1/settings/navbar` — `{ "links": [{ "label": "Shop", "url": "/shop", "children": [...] }], "groups": { "public": [...], "auth": [...], "customer": [...], "admin": [...] } }`
-- `PATCH /api/v1/settings/footer` — `{ "description": "...", "columns": [{ "title": "...", "links": [...] }], "socialLinks": [...], "copyrightText": "...", "newsletter": { "enabled": true, "heading": "..." } }`
-- `PATCH /api/v1/settings/contact` — `{ "address": "...", "phone": "...", "email": "...", "hours": "...", "mapEmbedUrl": "...", "social": { "twitter": "...", "instagram": "...", "facebook": "..." } }`
-- `PATCH /api/v1/settings/about` — `{ "story": "...", "mission": "...", "stats": [{ "label": "...", "value": "..." }] }` (+ `images[0]` for the about image)
-- `PATCH /api/v1/settings/limitedOffer` — `{ "enabled": true, "badge": "...", "title": "...", "subtitle": "...", "ctaText": "...", "ctaLink": "...", "endsAt": "..." }` (+ `images[0]` for the offer image)
+**`PATCH /api/v1/settings/navbar`** — form field `data` (no images):
+```json
+{
+    "links": [
+        { "label": "Home", "url": "/", "order": 0, "children": [] },
+        { "label": "Products", "url": "/products", "order": 1, "children": [] },
+        { "label": "About", "url": "/about", "order": 2, "children": [] },
+        { "label": "Contact", "url": "/contact", "order": 3, "children": [] }
+    ],
+    "groups": {
+        "public": [
+            { "label": "Home", "url": "/", "order": 0, "children": [] },
+            { "label": "Products", "url": "/products", "order": 1, "children": [] },
+            { "label": "About", "url": "/about", "order": 2, "children": [] },
+            { "label": "Contact", "url": "/contact", "order": 3, "children": [] }
+        ],
+        "auth": [
+            { "label": "Login", "url": "/login", "order": 0, "children": [] },
+            { "label": "Sign Up", "url": "/signup", "order": 1, "children": [] }
+        ],
+        "customer": [
+            { "label": "My Account", "url": "/dashboard/customer", "order": 0, "children": [] }
+        ],
+        "admin": [
+            { "label": "Admin Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }
+        ]
+    }
+}
+```
+
+**`PATCH /api/v1/settings/footer`** — form field `data` (no images):
+```json
+{
+    "description": "Artisanal perfume oils crafted for those who seek the extraordinary. Pure ingredients, timeless scents, and a story in every drop.",
+    "columns": [
+        {
+            "title": "Quick Links",
+            "links": [
+                { "label": "Products", "url": "/products" },
+                { "label": "About", "url": "/about" },
+                { "label": "Contact", "url": "/contact" },
+                { "label": "Dashboard", "url": "/dashboard" }
+            ]
+        },
+        {
+            "title": "Contact",
+            "links": [
+                { "label": "123 Perfume Avenue, New York, NY 10001", "url": "/contact" },
+                { "label": "+1 (555) 123-4567", "url": "/contact" },
+                { "label": "hello@attor.com", "url": "/contact" }
+            ]
+        }
+    ],
+    "socialLinks": [
+        { "platform": "twitter", "url": "https://twitter.com/attor" },
+        { "platform": "instagram", "url": "https://instagram.com/attor" },
+        { "platform": "facebook", "url": "https://facebook.com/attor" }
+    ],
+    "copyrightText": "© 2026 Attor. All rights reserved.",
+    "newsletter": {
+        "enabled": true,
+        "heading": "Stay in the loop"
+    }
+}
+```
+
+**`PATCH /api/v1/settings/contact`** — form field `data` (no images):
+```json
+{
+    "address": "123 Perfume Avenue, New York, NY 10001",
+    "phone": "+1 (555) 123-4567",
+    "email": "hello@attor.com",
+    "hours": "Mon–Sat 9am–6pm",
+    "mapEmbedUrl": "",
+    "social": {
+        "twitter": "https://twitter.com/attor",
+        "instagram": "https://instagram.com/attor",
+        "facebook": "https://facebook.com/attor"
+    }
+}
+```
+
+**`PATCH /api/v1/settings/about`** — form field `data` (+ `images[0]` file → `image`):
+```json
+{
+    "story": "Attor began with a passion for the ancient art of perfumery. Rooted in tradition yet crafted for the modern connoisseur, each of our perfume oils is a journey - from the misty forests of Assam to the sun-drenched gardens of Grasse. We work directly with distillers and growers to bring you the purest expressions of nature's most precious botanicals.",
+    "mission": "We believe fragrance is the most intimate form of expression. Our mission is to make artisanal perfume oils accessible - offering uncompromising quality, ethical sourcing, and a sensory experience that transcends the ordinary.",
+    "image": "/demo/perfume-oil/about.jpeg",
+    "stats": [
+        { "label": "Founded", "value": "2018" },
+        { "label": "Oud Variants", "value": "30+" }
+    ]
+}
+```
+In Postman: `data` + `images` (single file → `image`).
+
+**`PATCH /api/v1/settings/limitedOffer`** — form field `data` (+ `images[0]` file → `image`):
+```json
+{
+    "enabled": true,
+    "badge": "Limited Time",
+    "title": "Midnight Oud",
+    "subtitle": "Aged 12 months in teak barrels. Rare Assamese and Cambodian oud - now available at an exclusive introductory price.",
+    "ctaText": "Shop Now",
+    "ctaLink": "/products/midnight-oud",
+    "image": "/demo/perfume-oil/products/product-1.webp",
+    "endsAt": "2026-08-31T23:59:59.000Z"
+}
+```
+In Postman: `data` + `images` (single file → `image`).
 
 ### PATCH /api/v1/settings/preset/:niche (Apply Niche Preset — Admin)
 **Request:**
@@ -190,7 +652,15 @@ Response shape mirrors the GET response — the whole updated document.
 PATCH /api/v1/settings/preset/clothing
 Authorization: Bearer <admin_token>
 ```
-Applies brand + hero + about + contact + footer from the preset in one write. Valid niches: `clothing`, `perfume_oil`, `eyewear`. Unknown → 400.
+Applies the full niche preset in one write: **brand + theme + hero + about + contact + footer**. Each niche ships its own dynamic theme (`settings.themes.ts`) — different color palettes (light + dark), fonts, and radius:
+
+| Niche | Theme personality | Font | Radius |
+|---|---|---|---|
+| `clothing` | Warm, earthy fashion palette | Playfair Display | `0.5rem` |
+| `perfume_oil` | Classic amber/rose shadcn palette | Cormorant Garamond | `0.625rem` |
+| `eyewear` | Cool precision blue/violet palette | Space Grotesk | `0.75rem` |
+
+Valid niches: `clothing`, `perfume_oil`, `eyewear`. Unknown → 400.
 
 ## Seeding
 Run once after DB provisioning (or in CI/CD before first deploy):
@@ -204,3 +674,5 @@ This creates the singleton document prefilled from the `DEFAULT_NICHE` preset (`
 - The in-memory cache is invalidated on every write. For multi-instance deployments, swap `settings.cache.ts` for Redis (or add a TTL).
 - Sections are typed sub-schemas (`{ _id: false }`) — no generic `content` blob. Adding a new config area means adding a new typed sub-schema + a `SETTINGS_SECTIONS` entry + a zod schema.
 - **Logo syncing**: the logo lives once under `brand`. Navbar/footer intentionally have no logo field — the frontend reads `brand.logo`.
+- **Brand partial update**: only provided fields are written (dotted-path `$set`). Uploading `logo`/`favicon` replaces those values; not uploading them preserves the existing ones.
+- The full static default (matching the seeded `perfume_oil` preset) is in `docs/settings.json` — the frontend can use it as offline/static fallback data.

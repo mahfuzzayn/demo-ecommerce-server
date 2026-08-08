@@ -3,28 +3,49 @@ import { Document, Model } from "mongoose";
 // ------------------------------------------------------------
 // Theme
 // ------------------------------------------------------------
+// All CSS custom properties exposed by global.css — both the base set and the
+// shadcn/ui sidebar + chart additions. The user only sends the fields they
+// want to change; everything else keeps its current value.
 export interface IThemeColors {
-    primary: string;
-    primaryForeground: string;
-    secondary: string;
-    secondaryForeground: string;
+    // Base shadcn/ui tokens
     background: string;
     foreground: string;
-    accent: string;
-    accentForeground: string;
-    muted: string;
-    mutedForeground: string;
-    border: string;
-    destructive: string;
-    ring: string;
     card: string;
     cardForeground: string;
     popover: string;
     popoverForeground: string;
+    primary: string;
+    primaryForeground: string;
+    secondary: string;
+    secondaryForeground: string;
+    muted: string;
+    mutedForeground: string;
+    accent: string;
+    accentForeground: string;
+    destructive: string;
+    border: string;
+    input: string;
+    ring: string;
+    // Chart tokens
+    chart1: string;
+    chart2: string;
+    chart3: string;
+    chart4: string;
+    chart5: string;
+    // Sidebar tokens
+    sidebar: string;
+    sidebarForeground: string;
+    sidebarPrimary: string;
+    sidebarPrimaryForeground: string;
+    sidebarAccent: string;
+    sidebarAccentForeground: string;
+    sidebarBorder: string;
+    sidebarRing: string;
 }
 
 export interface IThemeFonts {
     family: string;
+    mono: string;
     sizes: {
         h1: string;
         h2: string;
@@ -48,6 +69,13 @@ export interface IThemeSettings {
 // ------------------------------------------------------------
 // Brand / Niche
 // ------------------------------------------------------------
+export interface IDeliveryOption {
+    name: string;
+    charge: number;
+    country?: string;
+    isActive: boolean;
+}
+
 export interface IBrandSettings {
     name: string;
     tagline: string;
@@ -56,6 +84,12 @@ export interface IBrandSettings {
     nicheLabel: string;
     logo: string;
     favicon: string;
+    // The store's active currency (e.g. "usd", "bdt") — products/orders
+    // inherit it, changeable via admin.
+    currency: string;
+    // Delivery options the storefront offers; order creation resolves the
+    // charge from the selected option's name.
+    deliveryOptions: IDeliveryOption[];
 }
 
 // ------------------------------------------------------------

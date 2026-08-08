@@ -1,49 +1,38 @@
+import crypto from "crypto";
 import Order from "../modules/order/order.model";
 
 /**
- * Generates a human-friendly order id in the format:
- *   DE{DD}D{MM}M{0001}{U|G}
+ * Generates a human-friendly, UNGUESSABLE order id in the format:
+ *   DEXXXXXXXX  (DE + 8 random chars, e.g. "DEY2H7ULPD" → 10 chars total)
  *
- * Examples:
- *   DE07D08M0001U  → day 07, month 08, sequence 0001, placed by a user
- *   DE07D08M0002G  → day 07, month 08, sequence 0002, placed by a guest
- *
- * The sequence is derived from how many orders were already placed today
- * (same day + month) so ids increment naturally per day. A retry loop guards
- * against a rare collision when two orders are created at the exact same time.
+ * The 8-char suffix is cryptographically random (alphanumeric, uppercase),
+ * with NO date or sequence encoded — a predictable incrementing sequence would
+ * let users guess other order ids and scrape data. The unique index on
+ * `orderId` guards against the astronomically unlikely collision; a retry loop
+ * re-rolls if one ever occurs.
  */
-export const generateOrderId = async (isUser: boolean): Promise<string> => {
-    const now = new Date();
-    const day = now.getDate().toString().padStart(2, "0");
-    const month = (now.getMonth() + 1).toString().padStart(2, "0");
-    const suffix = isUser ? "U" : "G";
+export const generateOrderId = async (): Promise<string> => {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I/O/1/0 — avoids look-alike confusion
 
-    // Find the highest sequence used for today's prefix.
-    const prefix = `DE${day}D${month}M`;
-    const latest = await Order.findOne({
-        orderId: { $regex: `^${prefix}` },
-    }).sort({ orderId: -1 });
-
-    let sequence = 1;
-    if (latest?.orderId) {
-        const match = latest.orderId.match(/(\d{4})(U|G)$/);
-        if (match) {
-            sequence = parseInt(match[1], 10) + 1;
-        }
-    }
-
-    // Retry a few times in case of a concurrent duplicate (unique index races).
     for (let attempt = 0; attempt < 5; attempt++) {
-        const candidate = `${prefix}${String(sequence).padStart(4, "0")}${suffix}`;
+        const bytes = crypto.randomBytes(8);
+        let suffix = "";
+        for (let i = 0; i < bytes.length; i++) {
+            suffix += alphabet[bytes[i] % alphabet.length];
+        }
 
+        const candidate = `DE${suffix}`;
         const exists = await Order.findOne({ orderId: candidate }).select("_id");
         if (!exists) {
             return candidate;
         }
-
-        sequence += 1;
     }
 
-    // Extremely unlikely — fall back to a timestamp-based id.
-    return `${prefix}${now.getTime().toString().slice(-4)}${suffix}`;
+    // Extremely unlikely — final fallback with the full byte range.
+    const fallback = crypto
+        .randomBytes(8)
+        .toString("base64")
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 8);
+    return `DE${fallback}`;
 };

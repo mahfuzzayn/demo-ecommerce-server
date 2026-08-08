@@ -1,24 +1,39 @@
 import { z } from "zod";
 import { SETTINGS_SECTIONS, SettingsSection } from "./settings.constant";
+import { Currency } from "../../constants/currency";
 
 const themeColorsValidationSchema = z.object({
-    primary: z.string().optional(),
-    primaryForeground: z.string().optional(),
-    secondary: z.string().optional(),
-    secondaryForeground: z.string().optional(),
     background: z.string().optional(),
     foreground: z.string().optional(),
-    accent: z.string().optional(),
-    accentForeground: z.string().optional(),
-    muted: z.string().optional(),
-    mutedForeground: z.string().optional(),
-    border: z.string().optional(),
-    destructive: z.string().optional(),
-    ring: z.string().optional(),
     card: z.string().optional(),
     cardForeground: z.string().optional(),
     popover: z.string().optional(),
     popoverForeground: z.string().optional(),
+    primary: z.string().optional(),
+    primaryForeground: z.string().optional(),
+    secondary: z.string().optional(),
+    secondaryForeground: z.string().optional(),
+    muted: z.string().optional(),
+    mutedForeground: z.string().optional(),
+    accent: z.string().optional(),
+    accentForeground: z.string().optional(),
+    destructive: z.string().optional(),
+    border: z.string().optional(),
+    input: z.string().optional(),
+    ring: z.string().optional(),
+    chart1: z.string().optional(),
+    chart2: z.string().optional(),
+    chart3: z.string().optional(),
+    chart4: z.string().optional(),
+    chart5: z.string().optional(),
+    sidebar: z.string().optional(),
+    sidebarForeground: z.string().optional(),
+    sidebarPrimary: z.string().optional(),
+    sidebarPrimaryForeground: z.string().optional(),
+    sidebarAccent: z.string().optional(),
+    sidebarAccentForeground: z.string().optional(),
+    sidebarBorder: z.string().optional(),
+    sidebarRing: z.string().optional(),
 });
 
 const themeValidationSchema = z.object({
@@ -32,6 +47,7 @@ const themeValidationSchema = z.object({
     fonts: z
         .object({
             family: z.string().optional(),
+            mono: z.string().optional(),
             sizes: z
                 .object({
                     h1: z.string().optional(),
@@ -55,6 +71,21 @@ const brandValidationSchema = z.object({
     nicheLabel: z.string().optional(),
     logo: z.string().optional(),
     favicon: z.string().optional(),
+    currency: z
+        .nativeEnum(Currency, {
+            errorMap: () => ({ message: "Invalid currency code" }),
+        })
+        .optional(),
+    deliveryOptions: z
+        .array(
+            z.object({
+                name: z.string().min(1, "Delivery option name is required"),
+                charge: z.number().min(0, "Charge cannot be negative"),
+                country: z.string().optional(),
+                isActive: z.boolean().optional(),
+            }),
+        )
+        .optional(),
 });
 
 const heroSlideValidationSchema = z.object({
