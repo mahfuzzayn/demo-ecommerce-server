@@ -160,14 +160,40 @@ export const generateOrderInvoicePDF = async (
             });
             pricingY += tableHeight;
 
-            doc.fontSize(11)
-                .fillColor("#000000")
-                .text("Discount", 50, pricingY, { width: 200 });
-            doc.text(`-${order.discount.toFixed(2)} /-`, 400, pricingY, {
-                width: 90,
-                align: "right",
-            });
-            pricingY += tableHeight;
+            // Show offer savings and coupon savings separately when present,
+            // plus the combined discount (offerDiscount + discount).
+            if (order.offerDiscount > 0) {
+                doc.fontSize(11)
+                    .fillColor("#000000")
+                    .text("Offer Discount", 50, pricingY, { width: 200 });
+                doc.text(`-${order.offerDiscount.toFixed(2)} /-`, 400, pricingY, {
+                    width: 90,
+                    align: "right",
+                });
+                pricingY += tableHeight;
+            }
+
+            if (order.discount > 0) {
+                doc.fontSize(11)
+                    .fillColor("#000000")
+                    .text("Coupon Discount", 50, pricingY, { width: 200 });
+                doc.text(`-${order.discount.toFixed(2)} /-`, 400, pricingY, {
+                    width: 90,
+                    align: "right",
+                });
+                pricingY += tableHeight;
+            }
+
+            if (order.totalDiscount > 0) {
+                doc.fontSize(11)
+                    .fillColor("#000000")
+                    .text("Total Discount", 50, pricingY, { width: 200 });
+                doc.text(`-${order.totalDiscount.toFixed(2)} /-`, 400, pricingY, {
+                    width: 90,
+                    align: "right",
+                });
+                pricingY += tableHeight;
+            }
 
             doc.fontSize(11)
                 .fillColor("#000000")

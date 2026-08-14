@@ -23,3 +23,9 @@ const storage = new CloudinaryStorage({
 });
 
 export const multerUpload = multer({ storage });
+
+// Multi-field uploads (e.g. product main `images` + `variantImages`).
+// Pass field configs: multerUploadFields([{ name: "images", maxCount: 10 }])
+export const multerUploadFields = (
+    fields: { name: string; maxCount: number }[],
+) => multerUpload.fields(fields);

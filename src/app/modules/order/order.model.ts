@@ -11,6 +11,14 @@ import { Currency } from "../../constants/currency";
 import AppError from "../../errors/appError";
 import { StatusCodes } from "http-status-codes";
 
+const orderProductVariantSchema = new Schema(
+    {
+        sku: { type: String, required: true, trim: true },
+        attributes: { type: Map, of: String, default: {} },
+    },
+    { _id: false },
+);
+
 const orderProductSchema = new Schema(
     {
         product: {
@@ -27,6 +35,12 @@ const orderProductSchema = new Schema(
             type: Number,
             required: true,
             min: 0,
+        },
+        // Snapshot of the chosen variant (SKU + attributes) when the product
+        // has variants. Priced/stocked from the variant, not the base product.
+        variant: {
+            type: orderProductVariantSchema,
+            default: undefined,
         },
     },
     { _id: false },
@@ -63,6 +77,19 @@ const orderSchema = new Schema<IOrder, OrderModel>(
             min: 0,
         },
         discount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        // Discount from active product offerPrice(s) — tracked separately so
+        // the order can show offer savings and coupon savings independently.
+        offerDiscount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        // Combined discount = offerDiscount + discount (coupon).
+        totalDiscount: {
             type: Number,
             default: 0,
             min: 0,

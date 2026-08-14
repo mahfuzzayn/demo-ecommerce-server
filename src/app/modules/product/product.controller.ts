@@ -3,7 +3,7 @@ import { ProductServices } from "./product.service";
 import { StatusCodes } from "http-status-codes";
 import sendResponse from "../../utils/sendResponse";
 import catchAsync from "../../utils/catchAsync";
-import { IImageFile } from "../../interface/IImageFile";
+import { IImageFiles } from "../../interface/IImageFile";
 import { IJwtPayload } from "../auth/auth.interface";
 
 const getAllProducts = catchAsync(async (req: Request, res: Response) => {
@@ -31,11 +31,14 @@ const getSingleProduct = catchAsync(async (req: Request, res: Response) => {
 });
 
 const createProduct = catchAsync(async (req: Request, res: Response) => {
-    const files = req.files as IImageFile[];
+    const files = req.files as IImageFiles;
+    const mainImages = files?.images || [];
+    const variantImages = files?.variantImages || [];
     const result = await ProductServices.createProduct(
         req.body,
         req.user as IJwtPayload,
-        files,
+        mainImages,
+        variantImages,
     );
 
     sendResponse(res, {
@@ -48,11 +51,14 @@ const createProduct = catchAsync(async (req: Request, res: Response) => {
 
 const updateProduct = catchAsync(async (req: Request, res: Response) => {
     const { productId } = req.params;
-    const files = req.files as IImageFile[];
+    const files = req.files as IImageFiles;
+    const mainImages = files?.images || [];
+    const variantImages = files?.variantImages || [];
     const result = await ProductServices.updateProduct(
         productId as string,
         req.body,
-        files,
+        mainImages,
+        variantImages,
     );
 
     sendResponse(res, {

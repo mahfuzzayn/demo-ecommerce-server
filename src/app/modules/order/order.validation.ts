@@ -4,6 +4,13 @@ import { OrderStatus, PaymentMethod } from "./order.interface";
 const orderProductSchema = z.object({
     product: z.string().min(1, "Product ID is required"),
     quantity: z.number().min(1, "Quantity must be at least 1"),
+    // The chosen variant's SKU — required by the backend when the product has
+    // variants (hasVariants: true). Ignored for non-variant products.
+    variant: z
+        .object({
+            sku: z.string().min(1, "Variant SKU is required"),
+        })
+        .optional(),
 });
 
 const createOrderValidationSchema = z.object({

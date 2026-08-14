@@ -12,9 +12,11 @@ const attributeSchema = z.object({
 });
 
 // Product/variant image — { publicId, url, order } (order 0 = cover/first).
+// url is optional: on update, { publicId, order } is enough (url backfilled);
+// a placeholder {} declares a NEW image slot filled from uploaded files.
 const productImageSchema = z.object({
     publicId: z.string().optional().default(""),
-    url: z.string().min(1, "Image URL is required"),
+    url: z.string().optional().default(""),
     order: z.number().min(0).default(0),
 });
 

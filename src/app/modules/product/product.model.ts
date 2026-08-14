@@ -56,7 +56,9 @@ const productAttributeSchema = new Schema(
 
 const productVariantSchema = new Schema(
     {
-        sku: { type: String, required: true, unique: true },
+        // sparse: true skips docs with an empty `variants` array (no sku values)
+        // so products without variants don't collide on the unique index.
+        sku: { type: String, required: true, unique: true, sparse: true },
         attributes: { type: Map, of: String, required: true },
         price: { type: Number, min: 0 },
         stock: { type: Number, required: true, min: 0, default: 0 },

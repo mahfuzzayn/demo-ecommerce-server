@@ -2,7 +2,6 @@ import { IProduct } from "./product.interface";
 import Product from "./product.model";
 import Category from "../category/category.model";
 import Brand from "../brand/brand.model";
-import { cloudinaryUpload } from "../../config/cloudinary.config";
 import AppError from "../../errors/appError";
 import { StatusCodes } from "http-status-codes";
 import { ProductSearchableFields } from "./product.constant";
@@ -16,7 +15,10 @@ import {
     buildVariantSku,
     populateProductRefs,
     resolveProductSlug,
-    normalizeVariantImages,
+    mergeVariantImageFiles,
+    validateVariantAttributes,
+    countVariantImagePlaceholders,
+    destroyImagesFromCloudinary,
 } from "./product.utils";
 
 const getAllProducts = async (query: Record<string, unknown>) => {
@@ -68,6 +70,7 @@ const createProduct = async (
     payload: IProduct,
     authUser: IJwtPayload,
     files?: IImageFile[],
+    variantFiles?: IImageFile[],
 ) => {
     // Validate category exists
     await Category.checkCategoryExist(payload.category.toString());
@@ -96,20 +99,54 @@ const createProduct = async (
         }
     }
 
-    // Generate SKUs for variants without one
+    // Auto-flag as a variant product and harden the variant system:
+    // every variant's attributes must draw keys/values from the declared axes.
+    if (payload.variants?.length) {
+        payload.hasVariants = true;
+        validateVariantAttributes(
+            payload.variants,
+            payload.attributes as { key: string; values: string[] }[],
+        );
+    }
+
+    // Generate SKUs for variants without one and merge uploaded variant image
+    // files into each variant's declared image slots. variantFiles is a single
+    // flat pool consumed across all variants in order. Validate the total count
+    // ONCE (across all variants) so each variant's share can exceed its own
+    // placeholders without tripping a false per-variant mismatch.
     const productPrefix = payload.name
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, "")
         .slice(0, 4) || "PRD";
     if (payload.variants?.length) {
-        payload.hasVariants = true;
-        payload.variants = payload.variants.map((variant) => ({
-            ...variant,
-            sku:
-                variant.sku ||
-                buildVariantSku(productPrefix, variant.attributes || {}),
-            imageUrls: normalizeVariantImages(variant.imageUrls as any[]),
-        }));
+        const totalPlaceholders = (payload.variants as any[]).reduce(
+            (sum, variant) =>
+                sum + countVariantImagePlaceholders(variant.imageUrls as any[]),
+            0,
+        );
+        const totalFiles = variantFiles?.length || 0;
+        if (totalFiles > totalPlaceholders) {
+            throw new AppError(
+                StatusCodes.BAD_REQUEST,
+                `Received ${totalFiles} variant image file(s) but only ${totalPlaceholders} placeholder slot(s) were declared across all variants. Add one placeholder ({}) per new variant image in each variant's imageUrls.`,
+            );
+        }
+
+        const variantImagePool = [...(variantFiles || [])];
+        payload.variants = payload.variants.map((variant) => {
+            const merged = mergeVariantImageFiles(
+                variant.imageUrls as any[],
+                variantImagePool,
+            );
+            variantImagePool.splice(0, merged.consumed);
+            return {
+                ...variant,
+                imageUrls: merged.images,
+                sku:
+                    variant.sku ||
+                    buildVariantSku(productPrefix, variant.attributes || {}),
+            };
+        });
     }
 
     // Handle uploaded images → { publicId, url, order } objects
@@ -148,6 +185,7 @@ const updateProduct = async (
         removedImageIds?: string[];
     },
     files?: IImageFile[],
+    variantFiles?: IImageFile[],
 ) => {
     const existingProduct = await Product.checkProductExist(productId);
 
@@ -182,35 +220,72 @@ const updateProduct = async (
         }
     }
 
-    // Generate SKUs for variants without one (keeps existing skus untouched)
-    // and normalize each variant's imageUrls against the existing variant
-    // images (backfills url by publicId; assigns sequential order).
+    // Harden the variant system on update too: attribute keys/values must come
+    // from the declared axes (merged with the existing ones when not resending).
+    if (payload.variants?.length) {
+        const effectiveAttributes = payload.attributes?.length
+            ? payload.attributes
+            : (existingProduct.attributes as any) || [];
+        validateVariantAttributes(
+            payload.variants,
+            effectiveAttributes as { key: string; values: string[] }[],
+        );
+    }
+
+    // Auto-set hasVariants from the variants array (create AND update).
+    if (payload.variants !== undefined) {
+        payload.hasVariants = (payload.variants?.length || 0) > 0;
+    }
+
+    // Generate SKUs for variants without one (keeps existing skus untouched),
+    // merge uploaded variant image files into each variant's placeholder slots,
+    // and backfill existing urls by publicId. variantFiles is a single flat pool
+    // consumed across all variants in order; the total count is validated once
+    // across all variants.
     if (payload.variants?.length) {
         const productPrefix = (existingProduct.name || "PRD")
             .toUpperCase()
             .replace(/[^A-Z0-9]/g, "")
             .slice(0, 4) || "PRD";
         const existingVariants = (existingProduct.variants as any[]) || [];
+
+        const totalPlaceholders = (payload.variants as any[]).reduce(
+            (sum, variant) =>
+                sum + countVariantImagePlaceholders(variant.imageUrls as any[]),
+            0,
+        );
+        const totalFiles = variantFiles?.length || 0;
+        if (totalFiles > totalPlaceholders) {
+            throw new AppError(
+                StatusCodes.BAD_REQUEST,
+                `Received ${totalFiles} variant image file(s) but only ${totalPlaceholders} placeholder slot(s) were declared across all variants. Add one placeholder ({}) per new variant image in each variant's imageUrls.`,
+            );
+        }
+
+        const variantImagePool = [...(variantFiles || [])];
         payload.variants = payload.variants.map((variant) => {
             const existingVariant = existingVariants.find(
                 (v: any) => v.sku === variant.sku,
             );
+            const merged = mergeVariantImageFiles(
+                variant.imageUrls as any[],
+                variantImagePool,
+                existingVariant?.imageUrls || [],
+            );
+            variantImagePool.splice(0, merged.consumed);
             return {
                 ...variant,
+                imageUrls: merged.images,
                 sku:
                     variant.sku ||
                     buildVariantSku(productPrefix, variant.attributes || {}),
-                imageUrls: normalizeVariantImages(
-                    variant.imageUrls as any[],
-                    existingVariant?.imageUrls || [],
-                ),
             };
         });
     }
 
     // -----------------------------------------------------------------
     // Image management — combine keepImages + newly uploaded files, delete
-    // removed ones from Cloudinary, and re-order everything.
+    // removed ones (explicit AND implicit) from Cloudinary, and re-order.
     // -----------------------------------------------------------------
     const removedIds = payload.removedImageIds || [];
 
@@ -238,21 +313,16 @@ const updateProduct = async (
 
     const mergedImages = [...keepImages, ...newImages];
 
-    // Delete removed images from Cloudinary (best-effort — a missing image
-    // shouldn't fail the whole update).
-    if (removedIds.length) {
-        await Promise.all(
-            removedIds.map((id) =>
-                cloudinaryUpload.uploader
-                    .destroy(id)
-                    .catch(() => undefined),
-            ),
-        );
-    }
+    // Does the caller actually manage MAIN images this update? If none of the
+    // three signals are present, imageUrls stays untouched — and no existing
+    // main image is considered implicitly removed/destroyed.
+    const managesMainImages = Boolean(
+        payload.keepImages?.length || files?.length || removedIds.length,
+    );
 
     // Only touch imageUrls when the caller actually manages images; a plain
     // imageUrls field in data is ignored so it can't silently wipe the set.
-    if (payload.keepImages?.length || files?.length || removedIds.length) {
+    if (managesMainImages) {
         payload.imageUrls = mergedImages as any;
     } else {
         delete (payload as any).imageUrls;
@@ -260,11 +330,76 @@ const updateProduct = async (
         delete (payload as any).removedImageIds;
     }
 
+    // MAIN images removed implicitly — an existing publicId that is not in
+    // keepImages and not re-uploaded. Only relevant when the caller manages
+    // main images; otherwise nothing is implicitly removed.
+    const implicitRemovedMainIds: string[] = [];
+    if (managesMainImages) {
+        const keptMainIds = new Set(
+            keepImages.map((img) => img.publicId).filter(Boolean),
+        );
+        const newlyUploadedMainIds = new Set(
+            newImages.map((img) => img.publicId).filter(Boolean),
+        );
+        implicitRemovedMainIds.push(
+            ...existingImages
+                .map((img: any) => img.publicId)
+                .filter(
+                    (id: string) =>
+                        id && !keptMainIds.has(id) && !newlyUploadedMainIds.has(id),
+                ),
+        );
+    }
+
+    // VARIANT images removed implicitly — a publicId that existed in a stored
+    // variant but is absent from the new variants' imageUrls lists. Only when
+    // the caller is actually resending variants (payload.variants !== undefined);
+    // otherwise variants are untouched and nothing is considered removed.
+    const storedVariantIds = ((existingProduct.variants as any[]) || []).flatMap(
+        (variant: any) =>
+            (variant.imageUrls || [])
+                .map((img: any) => img.publicId)
+                .filter(Boolean),
+    );
+    const newVariantIds = new Set(
+        (payload.variants !== undefined
+            ? (payload.variants as any[])
+            : (existingProduct.variants as any[])
+        )?.flatMap(
+            (variant: any) =>
+                (variant.imageUrls || [])
+                    .map((img: any) => img.publicId)
+                    .filter(Boolean),
+        ) || [],
+    );
+    const implicitRemovedVariantIds =
+        payload.variants !== undefined
+            ? storedVariantIds.filter((id: string) => !newVariantIds.has(id))
+            : [];
+
+    const allRemovedIds = [
+        ...removedIds,
+        ...implicitRemovedMainIds,
+        ...implicitRemovedVariantIds,
+    ];
+
+    // Persist the DB change FIRST, then destroy the removed images from
+    // Cloudinary. A Cloudinary API call can't participate in a Mongo
+    // transaction, so ordering save→destroy guarantees we never end up with a
+    // DB row referencing an already-destroyed image. Worst case on a destroy
+    // failure is an orphaned Cloudinary file (invisible to users, recoverable),
+    // not a broken image reference.
     const result = await populateProductRefs(
         Product.findByIdAndUpdate(productId, payload, {
             new: true,
         }),
     );
+
+    // Delete removed images from Cloudinary (best-effort — a missing image
+    // shouldn't fail the whole update).
+    const destroyedCount = allRemovedIds.length
+        ? await destroyImagesFromCloudinary(allRemovedIds)
+        : 0;
 
     await ActivityServices.logActivity({
         module: ActivityModule.PRODUCT,
@@ -274,7 +409,8 @@ const updateProduct = async (
         metadata: {
             imagesKept: keepImages.length,
             imagesAdded: newImages.length,
-            imagesRemoved: removedIds.length,
+            imagesRemoved: allRemovedIds.length,
+            imagesDestroyed: destroyedCount,
         },
     });
 

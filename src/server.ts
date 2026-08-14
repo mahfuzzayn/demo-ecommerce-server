@@ -19,6 +19,22 @@ async function connectToDatabase() {
     }
 }
 
+// The old `variants.sku_1` index was unique but NOT sparse, so empty `variants`
+// arrays produced a `variants.sku: null` entry — the second product created
+// without variants hit a duplicate-key error. Drop it; the model now declares
+// a sparse unique index and Mongoose rebuilds it on next syncIndexes/init.
+async function migrateProductIndexes() {
+    try {
+        await mongoose.connection
+            .collection("products")
+            .dropIndex("variants.sku_1")
+            .catch(() => {});
+        console.log("🔧 Dropped legacy non-sparse 'variants.sku_1' index");
+    } catch (error) {
+        console.error("Failed to migrate product indexes", error);
+    }
+}
+
 // Graceful shutdown
 function gracefulShutdown(signal: string) {
     console.log(`Received ${signal}. Closing server...`);
@@ -35,6 +51,7 @@ function gracefulShutdown(signal: string) {
 async function bootstrap() {
     try {
         await connectToDatabase();
+        await migrateProductIndexes();
 
         server = app.listen(config.port, () => {
             console.log(`🔥 Application is running on port ${config.port}`);

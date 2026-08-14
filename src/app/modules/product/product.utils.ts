@@ -4,6 +4,7 @@ import { SETTINGS_ID } from "../settings/settings.constant";
 import AppError from "../../errors/appError";
 import { StatusCodes } from "http-status-codes";
 import { generateSlug } from "../../utils/generateSlug";
+import { IImageFile } from "../../interface/IImageFile";
 
 // The store's active currency — brand.currency in the settings singleton.
 // Products inherit this on create (no manual currency).
@@ -11,6 +12,10 @@ export const getStoreCurrency = async (): Promise<string> => {
     const settings = await Settings.findById(SETTINGS_ID).select("brand");
     return settings?.brand?.currency || "usd";
 };
+
+// Re-exported for convenience — the canonical global helper lives in
+// src/app/config/cloudinary.config.ts so any module can destroy images.
+export { destroyImagesFromCloudinary } from "../../config/cloudinary.config";
 
 // Build a variant SKU: {PRODUCT_PREFIX}-{COLOR}-{SIZE}-{RANDOM}
 // e.g. PRD-BLACK-M-7F3K9Q — attributes are uppercased/cleaned, random 6-char suffix.
@@ -25,31 +30,112 @@ export const buildVariantSku = (
     return [productPrefix, ...parts, random].join("-");
 };
 
-// Normalize a variant's imageUrls to { publicId, url, order } objects —
-// the same shape as the main product images. Accepts:
-//   - existing objects { publicId, url, order }
-//   - plain URL strings (treated as new images with no publicId)
-// Missing order is assigned sequentially; missing url is backfilled from
-// the existing images by publicId (update path, when only publicId is sent).
-export const normalizeVariantImages = (
-    imageUrls: any[],
+// Merge uploaded variant image files into each variant's imageUrls slots.
+// The client sends `variantImages` files (flat, in variant order) plus, in
+// `data`, each variant's `imageUrls` array declaring its image slots:
+//   - existing images as { publicId, order } (url backfilled from existingImages)
+//   - NEW slots as placeholders {} or { order } — filled from variantImages
+//     in order of appearance.
+// Plain URL strings are still normalized for backward compatibility.
+// Orders are re-normalized sequentially (0, 1, 2, ...) after the merge so the
+// final list is always a clean, non-duplicated sequence — the client's order
+// hints are treated as slot positions, not literal final orders.
+// Returns the merged images plus how many files were consumed, so callers can
+// advance a shared file pool across multiple variants. NOTE: the total file
+// count vs total placeholder count is validated by the caller (once, across
+// ALL variants) — this function only fills slots and reports consumption.
+export const mergeVariantImageFiles = (
+    variantImageSlots: any[],
+    files: IImageFile[],
     existingImages: any[] = [],
-): { publicId: string; url: string; order: number }[] => {
+): { images: { publicId: string; url: string; order: number }[]; consumed: number } => {
     const existingByPublicId = new Map(
         existingImages.map((img: any) => [img.publicId, img]),
     );
 
-    return (imageUrls || []).map((img, i) => {
-        if (typeof img === "string") {
-            return { publicId: "", url: img, order: i };
+    let fileIndex = 0;
+    const merged = (variantImageSlots || []).map((slot, i) => {
+        // Plain URL string → keep as-is (backward compat)
+        if (typeof slot === "string") {
+            return { publicId: "", url: slot, order: i };
         }
-        const publicId = img?.publicId || "";
-        return {
-            publicId,
-            url: img?.url || existingByPublicId.get(publicId)?.url || "",
-            order: typeof img?.order === "number" ? img.order : i,
-        };
+
+        const publicId = slot?.publicId || "";
+        const url = slot?.url || existingByPublicId.get(publicId)?.url || "";
+
+        // Existing image (has a url or a backfillable publicId) → preserve
+        if (url || publicId) {
+            return {
+                publicId,
+                url,
+                order: typeof slot?.order === "number" ? slot.order : i,
+            };
+        }
+
+        // Placeholder slot → fill from the next uploaded file
+        const file = files[fileIndex];
+        if (file) {
+            fileIndex++;
+            return {
+                publicId: file.filename || "",
+                url: file.path,
+                order: typeof slot?.order === "number" ? slot.order : i,
+            };
+        }
+
+        // Placeholder with no file left — leave as an empty placeholder
+        return { publicId: "", url: "", order: i };
     });
+
+    // Re-normalize to a clean sequential order (0, 1, 2, ...) — this is the
+    // source of truth for cover/first and avoids duplicate/gapped orders when
+    // the client's order hints collide (e.g. existing image order: 1 + a new {}).
+    const images = merged.map((img, i) => ({ ...img, order: i }));
+
+    return { images, consumed: fileIndex };
+};
+
+// Count how many image slots in a variant's imageUrls are NEW placeholders
+// (no url and no backfillable publicId). Used to validate the total number of
+// uploaded variant image files across all variants.
+export const countVariantImagePlaceholders = (variantImageSlots: any[]): number =>
+    (variantImageSlots || []).filter((slot) => {
+        if (typeof slot === "string") return false;
+        const publicId = slot?.publicId || "";
+        const url = slot?.url || "";
+        return !publicId && !url;
+    }).length;
+
+// Verify every variant's attributes draw their keys and values from the
+// declared attribute axes. This keeps the variant system manageable for any
+// axis type — color, size, or custom names.
+export const validateVariantAttributes = (
+    variants: any[],
+    attributes: { key: string; values: string[] }[],
+): void => {
+    const axes = new Map(
+        (attributes || []).map((attr) => [attr.key, attr.values || []]),
+    );
+
+    for (const variant of variants || []) {
+        for (const [key, value] of Object.entries(
+            variant.attributes || {},
+        ) as [string, string][]) {
+            const allowedValues = axes.get(key);
+            if (!allowedValues) {
+                throw new AppError(
+                    StatusCodes.BAD_REQUEST,
+                    `Variant attribute key "${key}" is not defined in the product attributes. Add it to the attributes array first.`,
+                );
+            }
+            if (!allowedValues.includes(value)) {
+                throw new AppError(
+                    StatusCodes.BAD_REQUEST,
+                    `Variant attribute value "${value}" is not valid for attribute "${key}". Allowed values: ${allowedValues.join(", ")}.`,
+                );
+            }
+        }
+    }
 };
 
 // Populate reviews (optionally only non-flagged ones) + base refs

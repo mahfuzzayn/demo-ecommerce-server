@@ -24,11 +24,20 @@ export enum PaymentStatus {
     FAILED = "Failed",
 }
 
+// A chosen product variant snapshot — the SKU + attribute combo the customer
+// picked. Only present when the product has variants (hasVariants: true).
+export interface IOrderProductVariant {
+    sku: string;
+    attributes: Record<string, string>;
+}
+
 // Order product sub-document
 export interface IOrderProduct {
     product: Types.ObjectId;
     quantity: number;
     unitPrice: number;
+    // The chosen variant when the product has variants (else undefined).
+    variant?: IOrderProductVariant;
 }
 
 // Order Schema Definition
@@ -41,7 +50,12 @@ export interface IOrder extends Document {
     products: IOrderProduct[];
     coupon?: string | null;
     totalAmount: number;
+    // Coupon discount only (server-computed).
     discount: number;
+    // Discount from active product offerPrice(s) (server-computed).
+    offerDiscount: number;
+    // Total discount = offerDiscount + discount (coupon). Exposed for display.
+    totalDiscount: number;
     // Resolved server-side from the selected delivery option (brand settings).
     deliveryCharge: number;
     // The delivery option NAME the customer picked (e.g. "Inside Dhaka").
