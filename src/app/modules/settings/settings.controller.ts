@@ -76,9 +76,27 @@ const applyNichePreset = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const applyFullReset = catchAsync(async (req: Request, res: Response) => {
+    const { niche } = req.params;
+
+    if (Array.isArray(niche)) {
+        throw new AppError(StatusCodes.BAD_REQUEST, "Invalid niche!");
+    }
+
+    const result = await SettingsServices.applyFullReset(niche);
+
+    sendResponse(res, {
+        statusCode: StatusCodes.OK,
+        success: true,
+        message: `Settings fully reset to the ${niche} preset`,
+        data: result,
+    });
+});
+
 export const SettingsController = {
     getSettings,
     updateBrandFields,
     updateSection,
     applyNichePreset,
+    applyFullReset,
 };

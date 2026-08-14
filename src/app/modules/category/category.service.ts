@@ -9,6 +9,7 @@ import { IImageFile } from "../../interface/IImageFile";
 import { generateSlug } from "../../utils/generateSlug";
 import { ActivityServices } from "../activity/activity.service";
 import { ActivityModule, ActivityType } from "../activity/activity.interface";
+import { destroyCloudinaryUrls } from "../../config/cloudinary.config";
 
 const getAllCategories = async (query: Record<string, unknown>) => {
     const categoryQuery = new QueryBuilder(
@@ -105,7 +106,7 @@ const updateCategory = async (
     payload: Partial<ICategory>,
     file?: IImageFile,
 ) => {
-    await Category.checkCategoryExist(categoryId);
+    const existing = await Category.checkCategoryExist(categoryId);
 
     if (payload.name) {
         const isUnique = await Category.isCategoryNameUnique(
@@ -133,6 +134,7 @@ const updateCategory = async (
         }
     }
 
+    const previousIcon = existing.icon as string | null | undefined;
     if (file?.path) {
         payload.icon = file.path;
     }
@@ -145,6 +147,11 @@ const updateCategory = async (
     const result = await Category.findByIdAndUpdate(categoryId, payload, {
         new: true,
     }).populate("parent", "name slug");
+
+    // DB write succeeded — destroy the replaced icon from Cloudinary.
+    if (previousIcon && file?.path && previousIcon !== file.path) {
+        await destroyCloudinaryUrls([previousIcon]);
+    }
 
     await ActivityServices.logActivity({
         module: ActivityModule.CATEGORY,

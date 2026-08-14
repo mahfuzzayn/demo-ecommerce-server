@@ -56,6 +56,12 @@ router.patch(
 );
 
 router.patch(
+    "/reset/:niche",
+    auth(UserRole.ADMIN),
+    SettingsController.applyFullReset,
+);
+
+router.patch(
     "/:section",
     auth(UserRole.ADMIN),
     multerUpload.array("images", 20),

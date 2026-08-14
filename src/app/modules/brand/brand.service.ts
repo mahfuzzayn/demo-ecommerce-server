@@ -8,6 +8,7 @@ import { IJwtPayload } from "../auth/auth.interface";
 import { IImageFile } from "../../interface/IImageFile";
 import { ActivityServices } from "../activity/activity.service";
 import { ActivityModule, ActivityType } from "../activity/activity.interface";
+import { destroyCloudinaryUrls } from "../../config/cloudinary.config";
 
 const getAllBrands = async (query: Record<string, unknown>) => {
     const brandQuery = new QueryBuilder(Brand.find({ isDeleted: false }), query)
@@ -70,7 +71,7 @@ const updateBrand = async (
     payload: Partial<IBrand>,
     file?: IImageFile,
 ) => {
-    await Brand.checkBrandExist(brandId);
+    const existing = await Brand.checkBrandExist(brandId);
 
     if (payload.name) {
         const isUnique = await Brand.isBrandNameUnique(payload.name, brandId);
@@ -79,6 +80,7 @@ const updateBrand = async (
         }
     }
 
+    const previousLogo = existing.logo as string | null | undefined;
     if (file?.path) {
         payload.logo = file.path;
     }
@@ -86,6 +88,11 @@ const updateBrand = async (
     const result = await Brand.findByIdAndUpdate(brandId, payload, {
         new: true,
     });
+
+    // DB write succeeded — destroy the replaced logo from Cloudinary.
+    if (previousLogo && file?.path && previousLogo !== file.path) {
+        await destroyCloudinaryUrls([previousLogo]);
+    }
 
     await ActivityServices.logActivity({
         module: ActivityModule.BRAND,

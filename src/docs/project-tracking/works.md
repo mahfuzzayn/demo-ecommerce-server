@@ -15,15 +15,19 @@ User profile photoUrl needs a removal process, let user send photoUrl: "", it wi
 
 ### Updates
 1. Settings Brand Theme: currency is single item as "usd" or "bdt" etc. (Done)
+2. Product create/update update, size, color wise, imageUrls, keep, remove, variants images, offerPrice (Done)
+3. Order create with variants, offerPrice. (Done)
 
-2. Product create/update update, size, color wise (Ongoing)
-3. Update Settings theme preset, default should have all sections filled, keep 10 types of popular niche theme.
+3. Update Settings theme preset, default should have all sections filled, keep 10 types of popular niche theme. (Ongoing)
 
 ### Future Fixes (Later)
 
 #### Payment Issue (New)
 SSLCommerz not initializing payments, looks like they have updated from v3 to v4, need to research first.
 
+
+
+# CMDC Ouput <----->
 ## Product Module — With / Without Variants (Detailed)
 
 ### The bug that started this

@@ -4,11 +4,11 @@
 The Settings module manages all site-wide configuration as a **single singleton Mongoose document** (fixed `_id: "singleton"`). It holds the brand identity, theme, and all storefront sections: `brand`, `theme`, `hero`, `testimonials`, `navbar`, `footer`, `contact`, `about`, and `limitedOffer`. The whole config is readable in one request, and each section can be updated independently by an admin.
 
 ## How It Works
-- **Singleton document** – One document, one `_id` (`"singleton"`). Created at deploy time via the seed script (`npm run seed:settings`), prefilled from the default niche preset (`perfume_oil`).
+- **Singleton document** – One document, one `_id` (`"singleton"`). Created at deploy time via the seed script (`npm run seed:settings`), prefilled from the default niche preset (`clothing`).
 - **Get settings** – Public route. Returns the whole singleton, cached in memory; the second read is served from cache until a write invalidates it.
 - **Update brand** – Admin-only. Updates only the `brand` fields you provide (`name`, `tagline`, `description`, `niche`, `nicheLabel`, plus `logo`/`favicon` file uploads). **Unprovided fields are preserved** — sending only `name` keeps the existing logo/favicon.
 - **Update section** – Admin-only. Updates a single section (`theme`, `hero`, `testimonials`, `navbar`, `footer`, `contact`, `about`, `limitedOffer`) via `$set` with `runValidators: true`. **Every section uses the same `multipart/form-data` shape: a `data` field (JSON string of the section body) + an optional `images` file field** (mapped positionally for hero/testimonials/about/limitedOffer). Unknown section → 400, invalid body → 400.
-- **Niche presets** – Admin-only `PATCH /settings/preset/:niche` applies a full preset (`clothing` | `perfume_oil` | `eyewear`) from `settings.presets.ts` in one write.
+- **Niche presets** – Admin-only `PATCH /settings/preset/:niche` applies **only the theme** for a niche (`shoes` | `watches` | `eyewear` | `clothing` | `electronics` | `pet_animal` | `furniture` | `cosmetics` | `sports` | `jewelry` | `perfume_oil`). `PATCH /settings/reset/:niche` does a **full reset** (theme + brand + hero + about + contact + footer + navbar + testimonials + limitedOffer). `PATCH /settings/reset/empty` clears **everything** (keeping currency + delivery options) for a from-scratch rebuild. All from `settings.presets.ts`.
 - **Image uploads** – Positional, same semantics as the Product module: re-send the whole section; uploaded files map by index (hero → `slides[i].image`, testimonials → `items[i].avatar`, about/limitedOffer → `image`).
 - **Cache invalidation** – Every write invalidates the in-memory cache. The cache is single-instance only; use Redis (or a short TTL) when running multiple server instances.
 - **Concurrency** – The schema uses `optimisticConcurrency: true` to avoid silent last-write-wins on concurrent admin edits.
@@ -32,11 +32,11 @@ No auth required — the storefront/frontend needs this to render.
         "_id": "singleton",
         "brand": {
             "name": "Attor",
-            "tagline": "Essence of Distinction",
-            "description": "Premium perfume oils crafted for the discerning.",
-            "niche": "perfume_oil",
-            "nicheLabel": "Perfume Oil",
-            "logo": "/demo/perfume-oil/logo.png",
+            "tagline": "Define Your Style",
+            "description": "Premium clothing for the modern individual.",
+            "niche": "clothing",
+            "nicheLabel": "Clothing",
+            "logo": "/demo/clothing/logo.svg",
             "favicon": "",
             "currency": "usd",
             "deliveryOptions": [
@@ -301,7 +301,7 @@ Authorization: Bearer <admin_token>
 Content-Type: multipart/form-data
 
 Fields:
-  data: { "brand": { "name": "Attor", "tagline": "Essence of Distinction", "description": "Premium perfume oils crafted for the discerning.", "niche": "perfume_oil", "nicheLabel": "Perfume Oil" } }
+  data: { "brand": { "name": "Attor", "tagline": "Define Your Style", "description": "Premium clothing for the modern individual.", "niche": "clothing", "nicheLabel": "Clothing" } }
   logo: [optional file upload]
   favicon: [optional file upload]
 ```
@@ -315,8 +315,8 @@ Content-Type: application/json
 {
     "brand": {
         "name": "Attor",
-        "tagline": "Essence of Distinction",
-        "niche": "perfume_oil",
+        "tagline": "Define Your Style",
+        "niche": "clothing",
         "currency": "usd",
         "deliveryOptions": [
             { "name": "Store Pickup", "charge": 0, "country": "", "isActive": true },
@@ -646,33 +646,70 @@ In Postman: `data` + `images` (single file → `image`).
 ```
 In Postman: `data` + `images` (single file → `image`).
 
-### PATCH /api/v1/settings/preset/:niche (Apply Niche Preset — Admin)
+### PATCH /api/v1/settings/preset/:niche (Apply Niche THEME — Admin)
 **Request:**
 ```
 PATCH /api/v1/settings/preset/clothing
 Authorization: Bearer <admin_token>
 ```
-Applies the full niche preset in one write: **brand + theme + hero + about + contact + footer**. Each niche ships its own dynamic theme (`settings.themes.ts`) — different color palettes (light + dark), fonts, and radius:
+Applies **only the niche's theme** (colors, fonts, radius, globalCss) in one write. The rest of the settings document — brand, hero, navbar, footer, testimonials, about, contact, limitedOffer — is **left untouched**. This lets an admin switch the store's look without clobbering customized content.
+
+Each niche ships its own unique theme (`settings.themes.ts`) — distinct color palettes (light + dark), font pairing, and radius:
 
 | Niche | Theme personality | Font | Radius |
 |---|---|---|---|
-| `clothing` | Warm, earthy fashion palette | Playfair Display | `0.5rem` |
-| `perfume_oil` | Classic amber/rose shadcn palette | Cormorant Garamond | `0.625rem` |
-| `eyewear` | Cool precision blue/violet palette | Space Grotesk | `0.75rem` |
+| `shoes` | Street/athletic — bold red on charcoal | Oswald | `0.375rem` |
+| `watches` | Luxury — deep navy + champagne gold | Playfair Display | `0.5rem` |
+| `eyewear` | Precision blue/violet | Space Grotesk | `0.75rem` |
+| `clothing` | Warm earthy fashion | Playfair Display | `0.5rem` |
+| `electronics` | Futuristic cyan/violet on near-black | Orbitron | `0.25rem` |
+| `pet_animal` | Friendly warm amber + teal | Nunito | `1rem` |
+| `furniture` | Minimalist natural oak + cream | Merriweather | `0.25rem` |
+| `cosmetics` | Elegant rose + blush | Cormorant Garamond | `0.625rem` |
+| `sports` | Energetic green/lime | Barlow Condensed | `0.375rem` |
+| `jewelry` | Opulent black + champagne | Cinzel | `0.125rem` |
+| `perfume_oil` | Classic amber/rose fragrance | Cormorant Garamond | `0.625rem` |
 
-Valid niches: `clothing`, `perfume_oil`, `eyewear`. Unknown → 400.
+Valid niches: `shoes`, `watches`, `eyewear`, `clothing`, `electronics`, `pet_animal`, `furniture`, `cosmetics`, `sports`, `jewelry`, `perfume_oil`. Unknown → 400.
+
+### PATCH /api/v1/settings/reset/:niche (Full Settings Reset — Admin)
+**Request:**
+```
+PATCH /api/v1/settings/reset/electronics
+Authorization: Bearer <admin_token>
+```
+Applies the **entire** niche preset in one write: **theme + brand + hero + about + contact + footer + navbar + testimonials + limitedOffer**. Use this to recover from accidental content loss (e.g. deleted nav links) or to fully re-theme the storefront.
+
+- **Navbar** is standardized: main `links` = Home / Products / About / Contact; role `groups` provide `public` (adds Login/Register), `customer` (Dashboard, My Orders, Logout) and `admin` (Dashboard, Products, Orders, Users, Settings, Logout) — customer vs admin dashboard differ.
+- **Footer** is standardized: **Quick Links** (Home, Products, About, Contact) + **Shop** column + **Contact** column + social links + newsletter.
+- **Brand currency + delivery options are PRESERVED** if already set (the admin may have customized them); if unset they fall back to the preset defaults (`usd` + the standard delivery list).
+- Old section images (hero slides, testimonial avatars, about/limitedOffer images) replaced by the reset are **destroyed from Cloudinary** (best-effort, after the DB write).
+- Unknown niche → 400.
+
+### PATCH /api/v1/settings/reset/empty (Clear Everything — Admin)
+**Request:**
+```
+PATCH /api/v1/settings/reset/empty
+Authorization: Bearer <admin_token>
+```
+Special `empty` niche: clears **all** sections to empty defaults — theme, hero, testimonials, navbar, footer, contact, about, limitedOffer — so the admin can fill everything back in one by one. Keeps:
+- **`brand.currency`** (as-is, not reset to `usd`).
+- **`brand.deliveryOptions`** (as-is).
+- A minimal brand identity (`name`, `niche`, `nicheLabel`) so the store stays usable while being rebuilt.
+- Existing section images are **destroyed from Cloudinary** (best-effort) since the sections are cleared.
+- Unknown niche → 400.
 
 ## Seeding
 Run once after DB provisioning (or in CI/CD before first deploy):
 ```bash
 npm run seed:settings
 ```
-This creates the singleton document prefilled from the `DEFAULT_NICHE` preset (`perfume_oil`) if it does not exist; if it already exists it skips.
+This creates the singleton document prefilled from the `DEFAULT_NICHE` preset (`clothing`) if it does not exist; if it already exists it skips.
 
 ## Notes
-- `GET /settings` is **public**; all writes (`PATCH /`, `PATCH /:section`, `PATCH /preset/:niche`) require the `admin` role via the `auth` middleware.
+- `GET /settings` is **public**; all writes (`PATCH /`, `PATCH /:section`, `PATCH /preset/:niche`, `PATCH /reset/:niche`) require the `admin` role via the `auth` middleware.
 - The in-memory cache is invalidated on every write. For multi-instance deployments, swap `settings.cache.ts` for Redis (or add a TTL).
 - Sections are typed sub-schemas (`{ _id: false }`) — no generic `content` blob. Adding a new config area means adding a new typed sub-schema + a `SETTINGS_SECTIONS` entry + a zod schema.
 - **Logo syncing**: the logo lives once under `brand`. Navbar/footer intentionally have no logo field — the frontend reads `brand.logo`.
 - **Brand partial update**: only provided fields are written (dotted-path `$set`). Uploading `logo`/`favicon` replaces those values; not uploading them preserves the existing ones.
-- The full static default (matching the seeded `perfume_oil` preset) is in `docs/settings.json` — the frontend can use it as offline/static fallback data.
+- The full static default (matching the seeded `clothing` preset) is in `docs/settings.json` — the frontend can use it as offline/static fallback data.

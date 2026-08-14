@@ -10,6 +10,7 @@ import QueryBuilder from "../../builder/QueryBuilder";
 import { IJwtPayload } from "../auth/auth.interface";
 import { ActivityServices } from "../activity/activity.service";
 import { ActivityModule, ActivityType } from "../activity/activity.interface";
+import { destroyCloudinaryUrls } from "../../config/cloudinary.config";
 
 // Function to register user
 const registerUser = async (userData: IUser) => {
@@ -114,6 +115,7 @@ const updateProfile = async (
     }
 
     // A new uploaded photo overrides; photoUrl: "" removes the current photo.
+    const previousPhotoUrl = isUserExists.photoUrl as string | null | undefined;
     if (file && file.path) {
         payload.photoUrl = file.path;
     } else if (payload.photoUrl === "") {
@@ -127,6 +129,13 @@ const updateProfile = async (
             new: true,
         },
     );
+
+    // DB write succeeded — destroy the replaced photo from Cloudinary.
+    // Only when a NEW photo replaced an EXISTING one (photoUrl: "" removal
+    // also destroys the old file; nothing to destroy when there was none).
+    if (previousPhotoUrl && previousPhotoUrl !== result?.photoUrl) {
+        await destroyCloudinaryUrls([previousPhotoUrl]);
+    }
 
     await ActivityServices.logActivity({
         module: ActivityModule.USER,

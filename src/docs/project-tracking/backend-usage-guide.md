@@ -549,7 +549,7 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/product`
 
-Product model fields: `name`, `slug` (auto-generated), `description`, `price`, `currency` (inherited from store brand settings — not sent on create), `stock`, `weight`, `category` (ObjectId → Category), `brand` (ObjectId → Brand), `createdBy` (ObjectId → User, attached automatically), `imageUrls[]` (`{ publicId, url, order }`), `isActive`, `isDeleted`, `averageRating`, `ratingCount`, `availableColors[]`, `specification[]` (`{key, value}`), `keyFeatures[]`, `offerPrice` (`{ type: flat|percentage, value, startAt, endAt, isActive }`), `colorOptions[]` (`{ name, hex }`), `attributes[]` (`{ key, values }` — variant axes), `variants[]` (`{ sku, attributes, price?, stock, imageUrls, isActive }` — variant `imageUrls` same `{ publicId, url, order }` shape), `hasVariants`, timestamps.
+Product model fields: `name`, `slug` (auto-generated), `description`, `price`, `currency` (inherited from store brand settings — not sent on create; **accepted on update**), `stock`, `weight`, `category` (ObjectId → Category), `brand` (ObjectId → Brand), `createdBy` (ObjectId → User, attached automatically), `imageUrls[]` (`{ publicId, url, order }`), `isActive`, `isDeleted`, `averageRating`, `ratingCount`, `availableColors[]`, `specification[]` (`{key, value}`), `keyFeatures[]`, `offerPrice` (`{ type: flat|percentage, value, startAt, endAt, isActive }`), `colorOptions[]` (`{ name, hex }`), `attributes[]` (`{ key, values }` — variant axes), `variants[]` (`{ sku, attributes, price?, stock, imageUrls, isActive }` — variant `imageUrls` use the same `{ publicId, url, order }` shape; new-image slots are sent as `{}` placeholders filled from `variantImages` files), `hasVariants` (auto-set from the presence of `variants`), timestamps.
 
 ### 7.1 GET /api/v1/product — Get all products
 
@@ -653,7 +653,7 @@ GET /api/v1/product/664f1a2b3c4d5e6f7a8b9c0d
 
 ### 7.3 POST /api/v1/product — Create product
 
-Protected — `admin`. **Multipart form-data.** The JSON payload goes in a `data` field; up to **10 images** upload via the `images` field. The slug is auto-generated from `name` if not provided.
+Protected — `admin`. **Multipart form-data.** The JSON payload goes in a `data` field; up to **10 main images** upload via the `images` field, and **variant images** via the `variantImages` field (a flat pool consumed in order across each variant's `{}` placeholder slots). The slug is auto-generated from `name` if not provided.
 
 **Request:**
 ```
@@ -662,11 +662,16 @@ Authorization: Bearer <adminAccessToken>
 Content-Type: multipart/form-data
 
 Form fields:
-  data: {"name":"Smartphone X","description":"Latest smartphone","price":799.99,"stock":50,"weight":0.2,"category":"<categoryId>","brand":"<brandId>","colorOptions":[{"name":"Black","hex":"#000000"}],"attributes":[{"key":"Color","values":["Black","White"]},{"key":"Size","values":["S","M","L"]}],"hasVariants":true,"variants":[{"attributes":{"Color":"Black","Size":"M"},"price":799.99,"stock":20,"imageUrls":[{"publicId":"v1","url":"https://.../black-m.jpg","order":0}]}],"offerPrice":{"type":"flat","value":50,"startAt":"2026-08-01","endAt":"2026-08-31"},"availableColors":["Black","White"],"specification":[{"key":"RAM","value":"8GB"}],"keyFeatures":["5G Support"]}
-  images: <file1> <file2> ... (max 10)
+  data: {"name":"Smartphone X","description":"Latest smartphone","price":799.99,"stock":50,"weight":0.2,"category":"<categoryId>","brand":"<brandId>","colorOptions":[{"name":"Black","hex":"#000000"}],"attributes":[{"key":"Color","values":["Black","White"]},{"key":"Size","values":["S","M","L"]}],"variants":[{"attributes":{"Color":"Black","Size":"M"},"price":799.99,"stock":20,"imageUrls":[{},{}]},{"attributes":{"Color":"White","Size":"M"},"price":799.99,"stock":15,"imageUrls":[{}]}],"offerPrice":{"type":"flat","value":50,"startAt":"2026-08-01","endAt":"2026-08-31"},"availableColors":["Black","White"],"specification":[{"key":"RAM","value":"8GB"}],"keyFeatures":["5G Support"]}
+  images: <file1> <file2> <file3> ... (max 10, main photos)
+  variantImages: <black-m-1.jpg> <black-m-2.jpg> <white-m-1.jpg> ... (flat, in variant order)
 ```
 
-Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `brand`. Optional: `slug`, `stock` (default 0), `imageUrls`, `isActive` (default true), `availableColors`, `specification`, `keyFeatures`, `colorOptions`, `attributes` (variant axes `{ key, values }`), `variants` (SKUs auto-generated as `{PREFIX}-{COLOR}-{SIZE}-{RANDOM}` when omitted), `hasVariants`, `offerPrice`. **Do NOT send `currency`** — it inherits from the store's brand settings (`brand.currency`). `createdBy` is attached automatically. `offerPrice.endAt` must be after `startAt` (400 otherwise).
+- In the example: variant 1 (`Black / M`) declares 2 `{}` placeholders → gets `black-m-1.jpg`, `black-m-2.jpg`; variant 2 (`White / M`) declares 1 → gets `white-m-1.jpg`. Files are consumed **in order of appearance across all variants' placeholders**.
+- Every variant's `attributes` keys **and** values must be declared in the `attributes` axes — otherwise `400` with a clear message.
+- `hasVariants` is set to `true` automatically when `variants` has entries.
+
+Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `brand`. Optional: `slug`, `stock` (default 0), `imageUrls`, `isActive` (default true), `availableColors`, `specification`, `keyFeatures`, `colorOptions`, `attributes` (variant axes `{ key, values }`), `variants` (SKUs auto-generated as `{PREFIX}-{COLOR}-{SIZE}-{RANDOM}` when omitted; `imageUrls` entries are `{}` placeholders for new variant images), `hasVariants`, `offerPrice`. **Do NOT send `currency`** — it inherits from the store's brand settings (`brand.currency`). `createdBy` is attached automatically. `offerPrice.endAt` must be after `startAt` (400 otherwise).
 
 **Response (201):**
 ```json
@@ -681,14 +686,18 @@ Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `b
 
 ### 7.4 PATCH /api/v1/product/:productId — Update product
 
-Protected — `admin`. **Multipart form-data** with `data` + optional `images`. Any subset of fields can be sent. `isActive` can be toggled `true`/`false` freely.
+Protected — `admin`. **Multipart form-data** with `data` + optional `images` and `variantImages` files. Any subset of fields can be sent. `isActive` can be toggled `true`/`false` freely. **`currency` IS accepted here** (unlike create) — an explicit override for this product. `hasVariants` is set automatically from the `variants` array length.
 
-**Image management** — images are objects `{ publicId, url, order }` (`order: 0` = cover/first). On update:
-- `keepImages: [{ publicId, order }]` — existing images to keep, with new order (reorder by changing `order`).
-- `images` (multipart files) — new uploads, appended after the kept images.
-- `removedImageIds: ["<cloudinary publicId>"]` — images to **delete from Cloudinary** and drop.
-- Omit all three to leave images untouched.
-- **Variant images** — send the full `imageUrls` list per variant (objects `{ publicId, url, order }`, or plain URL strings, normalized server-side). For existing images, `{ publicId, order }` suffices — the `url` is backfilled from the stored variant by `publicId`.
+**Image management** — main images are objects `{ publicId, url, order }` (`order: 0` = cover/first). On update:
+- `keepImages: [{ publicId, order }]` — existing main images to keep, with new order (reorder by changing `order`).
+- `images` (multipart files) — new main uploads, appended after the kept images.
+- `removedImageIds: ["<cloudinary publicId>"]` — explicit Cloudinary publicIds to destroy.
+- **Implicit removal**: any existing main image NOT in `keepImages` and NOT re-uploaded is considered removed and **destroyed from Cloudinary automatically** (best-effort, after the DB write). Omit all three to leave images untouched.
+- **Variant images** — send each variant's `imageUrls` as its image slots:
+  - existing images → `{ publicId, order }` — the `url` is backfilled from the stored variant by `publicId`;
+  - **new slots → empty placeholder `{}` (or `{ order }`)** — filled from the `variantImages` files in order of appearance (flat, across all variants);
+  - a stored variant `publicId` absent from the new `imageUrls` is **destroyed from Cloudinary automatically** (implicit removal);
+  - variant image `order`s are re-normalized to a clean `0, 1, 2, …` sequence after the merge.
 
 **Request:**
 ```
@@ -697,9 +706,12 @@ Authorization: Bearer <adminAccessToken>
 Content-Type: multipart/form-data
 
 Form fields:
-  data: {"name":"Smartphone X Pro","price":899.99,"isActive":true,"keepImages":[{"publicId":"demo-ecommerce/abc123","order":1}],"removedImageIds":["demo-ecommerce/def456"],"offerPrice":{"type":"percentage","value":10,"startAt":"2026-08-01","endAt":"2026-08-31"},"variants":[{"sku":"SMAR-BLACK-M-7F3K9Q","attributes":{"Color":"Black","Size":"M"},"stock":15,"imageUrls":[{"publicId":"demo-ecommerce/variant-red","order":0}]}]}
-  images: <file1> (optional, appended after kept images)
+  data: {"name":"Smartphone X Pro","price":899.99,"isActive":true,"currency":"usd","keepImages":[{"publicId":"demo-ecommerce/abc123","order":1}],"removedImageIds":["demo-ecommerce/def456"],"offerPrice":{"type":"percentage","value":10,"startAt":"2026-08-01","endAt":"2026-08-31"},"variants":[{"sku":"SMAR-BLACK-M-7F3K9Q","attributes":{"Color":"Black","Size":"M"},"stock":15,"imageUrls":[{"publicId":"demo-ecommerce/variant-red","order":0},{}]},{"attributes":{"Color":"White","Size":"L"},"price":849.99,"stock":10,"imageUrls":[{}]}]}
+  images: <file1> (optional, appended after kept main images)
+  variantImages: <black-m-new.jpg> <white-l-new.jpg> (optional, fills the {} placeholders in order)
 ```
+
+In the example: variant 1 keeps its existing image and declares one new slot (`{}` → `black-m-new.jpg`); variant 2 (new) declares one slot (`{}` → `white-l-new.jpg`). Sending more `variantImages` files than total placeholders → `400` count-mismatch.
 
 **Response (200):**
 ```json
@@ -740,9 +752,13 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/order`
 
-Order model fields: `orderId` (auto-generated, unguessable `DEXXXXXXXX`, e.g. `DEY2H7ULPD`), `user` (ObjectId → User, or `null` for guest orders), `products[]` (`{product, quantity, unitPrice}`), `coupon`, `totalAmount`, `discount`, `deliveryCharge`, `deliveryOptionName`, `finalAmount`, `currency`, `status`, `shippingAddress`, `recipientName`, `phoneNo`, `notes` (optional), `paymentMethod` (`COD` | `Online`), `paymentStatus` (`Pending` | `Paid` | `Failed`), `paymentProvider` (`stripe`/`sslcommerz`/`bkash`), gateway tracking fields (`stripeSessionId`, `sslSessionKey`, `transactionId`), FX fields (`fxRate`, `fxBaseCurrency`), timestamps.
+Order model fields: `orderId` (auto-generated, unguessable `DEXXXXXXXX`, e.g. `DEY2H7ULPD`), `user` (ObjectId → User, or `null` for guest orders), `products[]` (`{product, quantity, unitPrice, variant?}` — `variant: { sku, attributes }` snapshot when a product variant was chosen), `coupon`, `totalAmount`, `offerDiscount` (savings from active product `offerPrice`s), `discount` (**coupon-only**), `totalDiscount` (`offerDiscount + discount`), `deliveryCharge`, `deliveryOptionName`, `finalAmount`, `currency`, `status`, `shippingAddress`, `recipientName`, `phoneNo`, `notes` (optional), `paymentMethod` (`COD` | `Online`), `paymentStatus` (`Pending` | `Paid` | `Failed`), `paymentProvider` (`stripe`/`sslcommerz`/`bkash`), gateway tracking fields (`stripeSessionId`, `sslSessionKey`, `transactionId`), FX fields (`fxRate`, `fxBaseCurrency`), timestamps.
 
-**All money fields are computed server-side** — the client never sends `totalAmount`, `discount`, `finalAmount`, `unitPrice`, or `deliveryCharge`. `deliveryCharge` is resolved from the chosen `deliveryOptionName` (brand settings). `currency` is inherited from the products (all products in an order must share the same currency, else 400).
+**All money fields are computed server-side** — the client never sends `totalAmount`, `discount`, `offerDiscount`, `totalDiscount`, `finalAmount`, `unitPrice`, or `deliveryCharge`. `deliveryCharge` is resolved from the chosen `deliveryOptionName` (brand settings). `currency` is inherited from the products (all products in an order must share the same currency, else 400).
+
+**Pricing:** `totalAmount` is the subtotal after offer discounts (unit prices already reflect active `offerPrice`s). `discount` = coupon savings only. `offerDiscount` = the savings from active product offers vs base prices. `totalDiscount = offerDiscount + discount`. `finalAmount = totalAmount - totalDiscount + deliveryCharge`.
+
+**Variants:** when a product `hasVariants: true`, the order line **must** include `variant: { sku }` (400 if missing). Price/stock come from that variant (`variant.price ?? product.price`, with `offerPrice` applied on top); stock decrement/restore targets the variant's stock (`variants.$.stock`) when a variant is chosen.
 
 **Guest checkout:** `POST /order` requires **no auth**. Send a Bearer token to link the order to that user; omit it to order as a guest (`user: null`).
 
@@ -840,7 +856,7 @@ Authorization: Bearer <accessToken>
 
 ### 8.4 POST /api/v1/order — Create order (guest checkout)
 
-**No auth required** — optional `Authorization` header. If a valid Bearer token is present the order is linked to that user; without a token it's a **guest order** (`user: null`). Each product is validated (exists, not deleted, active, sufficient stock, same currency); stock is **decremented** on order creation inside a transaction.
+**No auth required** — optional `Authorization` header. If a valid Bearer token is present the order is linked to that user; without a token it's a **guest order** (`user: null`). Each product is validated (exists, not deleted, active, sufficient stock — product or **variant** stock, same currency); stock is **decremented** on order creation inside a transaction (variant stock when a variant is chosen).
 
 **Request:**
 ```
@@ -850,7 +866,8 @@ Content-Type: application/json
 
 {
   "products": [
-    { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 2 }
+    { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 2 },
+    { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 1, "variant": { "sku": "SMAR-BLACK-M-7F3K9Q" } }
   ],
   "coupon": "SAVE20",
   "deliveryOptionName": "Inside Dhaka",
@@ -862,14 +879,14 @@ Content-Type: application/json
 }
 ```
 
-- `products` — required, at least 1 item. Only `product` (id) and `quantity` are needed — `unitPrice` comes from the DB.
+- `products` — required, at least 1 item. Only `product` (id) and `quantity` are needed — `unitPrice` comes from the DB. **When the product `hasVariants: true`, `variant: { sku }` is required** (400 if missing); price/stock come from that variant.
 - `coupon` — optional string (verified: exists, active, in date range, meets min order).
 - `deliveryOptionName` — **required** string. The customer picks an option from the store's brand settings (`Store Pickup`, `Inside Dhaka`, `Outside Dhaka`, `International`, ...); the backend resolves the `deliveryCharge` from that option. **The amount is never sent by the client.**
 - `shippingAddress` — required string.
 - `recipientName`, `phoneNo` — **required** strings (delivery recipient).
 - `notes` — optional string.
 - `paymentMethod` — `"COD"` or `"Online"`.
-- **Do not send** `totalAmount`, `discount`, `finalAmount`, `deliveryCharge`, `unitPrice`, `currency`, `user`, `orderId` — all computed/attached server-side.
+- **Do not send** `totalAmount`, `discount`, `offerDiscount`, `totalDiscount`, `finalAmount`, `deliveryCharge`, `unitPrice`, `currency`, `user`, `orderId` — all computed/attached server-side.
 
 **Response (201):**
 ```json
@@ -880,12 +897,17 @@ Content-Type: application/json
     "_id": "666a1a2b3c4d5e6f7a8b9c0d",
     "orderId": "DEY2H7ULPD",
     "user": { "_id": "664f...", "name": "John Doe", "email": "customer@example.com" },
-    "products": [{ "product": { "_id": "664f1a2b...", "name": "Smartphone X" }, "quantity": 2, "unitPrice": 799.99 }],
+    "products": [
+      { "product": { "_id": "664f1a2b...", "name": "Smartphone X" }, "quantity": 2, "unitPrice": 799.99 },
+      { "product": { "_id": "664f1a2b...", "name": "Smartphone X" }, "quantity": 1, "unitPrice": 759.99, "variant": { "sku": "SMAR-BLACK-M-7F3K9Q", "attributes": { "Color": "Black", "Size": "M" } } }
+    ],
     "coupon": "SAVE20",
-    "totalAmount": 1599.98,
+    "totalAmount": 2359.97,
+    "offerDiscount": 40.0,
     "discount": 0,
+    "totalDiscount": 40.0,
     "deliveryCharge": 50,
-    "finalAmount": 1649.98,
+    "finalAmount": 2369.97,
     "currency": "usd",
     "status": "Pending",
     "shippingAddress": "123 Main Street, Dhaka",
@@ -900,7 +922,7 @@ Content-Type: application/json
 }
 ```
 
-**Errors:** 404 "Product with ID X not found!" / 400 "Product ... is not available!" / 400 "Insufficient stock for ... Available: N" / 400 "All products in an order must have the same currency!" / 400 "Coupon has expired!" etc.
+**Errors:** 404 "Product with ID X not found!" / 400 "Product ... is not available!" / 400 "Product ... has variants — please select a variant (send variant.sku)." / 400 "Variant SKU ... not found for product ..." / 400 "Insufficient stock for ... Available: N" / 400 "All products in an order must have the same currency!" / 400 "Coupon has expired!" etc.
 
 ### 8.5 GET /api/v1/order/track-order/:orderId — Track order (public)
 
@@ -925,7 +947,9 @@ GET /api/v1/order/track-order/DEY2H7ULPD
     "paymentProvider": "stripe",
     "currency": "usd",
     "totalAmount": 1599.98,
+    "offerDiscount": 0,
     "discount": 0,
+    "totalDiscount": 0,
     "deliveryCharge": 50,
     "finalAmount": 1649.98,
     "recipientName": "John Doe",
@@ -934,7 +958,7 @@ GET /api/v1/order/track-order/DEY2H7ULPD
     "notes": "Please call before delivery",
     "placedBy": "John Doe",
     "products": [
-      { "productId": "664f1a2b...", "name": "Smartphone X", "image": "https://...", "quantity": 2, "unitPrice": 799.99, "total": 1599.98 }
+      { "productId": "664f1a2b...", "name": "Smartphone X", "image": "https://...", "quantity": 2, "unitPrice": 799.99, "total": 1599.98, "variant": { "sku": "SMAR-BLACK-M-7F3K9Q", "attributes": { "Color": "Black", "Size": "M" } } }
     ],
     "statusHistory": [
       { "status": "Pending", "at": "2026-07-15T10:00:00.000Z" },
@@ -978,9 +1002,9 @@ Use `?by=transactionId` on the payment success page to fetch the invoice straigh
     "recipient": { "name": "John Doe", "phoneNo": "+1 (555) 123-4567", "shippingAddress": "123 Main Street, Dhaka", "notes": "" },
     "payment": { "method": "Online", "provider": "stripe", "transactionId": "cs_test_abc123..." },
     "items": [
-      { "productId": "664f1a2b...", "name": "Smartphone X", "image": "https://...", "quantity": 2, "unitPrice": 799.99, "total": 1599.98 }
+      { "productId": "664f1a2b...", "name": "Smartphone X", "image": "https://...", "quantity": 2, "unitPrice": 799.99, "total": 1599.98, "variant": { "sku": "SMAR-BLACK-M-7F3K9Q", "attributes": { "Color": "Black", "Size": "M" } } }
     ],
-    "totals": { "subtotal": 1599.98, "discount": 0, "deliveryCharge": 50, "finalAmount": 1649.98 }
+    "totals": { "subtotal": 1599.98, "offerDiscount": 0, "discount": 0, "totalDiscount": 0, "deliveryCharge": 50, "finalAmount": 1649.98 }
   }
 }
 ```
@@ -996,12 +1020,16 @@ Authorization: Bearer <accessToken>
 Content-Type: application/json
 
 {
-  "products": [ { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 3 } ],
+  "products": [
+    { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 3 },
+    { "product": "664f1a2b3c4d5e6f7a8b9c0d", "quantity": 1, "variant": { "sku": "SMAR-BLACK-M-7F3K9Q" } }
+  ],
   "coupon": "SAVE20",
-  "deliveryCharge": 60,
+  "deliveryOptionName": "Outside Dhaka",
   "shippingAddress": "456 New Street, Dhaka"
 }
 ```
+Same rules as create: variant products require `variant.sku`; old stock (variant or base) is restored and new stock decremented inside a transaction; `offerDiscount`/`discount`/`totalDiscount`/`finalAmount` are all recomputed server-side.
 
 **Response (200):**
 ```json
@@ -1862,41 +1890,41 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/settings`
 
-The Settings module is a **single singleton document** (`_id: "singleton"`) that drives the whole storefront: brand identity, theme (colors/fonts/radius/global CSS), hero slides, testimonials, navbar (links + role groups), footer, contact, about, and limited-offer banner. The whole config is readable in one request, and each section can be updated independently by an admin. Seeded at deploy time via `npm run seed:settings` (prefilled from the `perfume_oil` preset).
+The Settings module is a **single singleton document** (`_id: "singleton"`) that drives the whole storefront: brand identity, theme (colors/fonts/radius/global CSS), hero slides, testimonials, navbar (links + role groups), footer, contact, about, and limited-offer banner. The whole config is readable in one request, and each section can be updated independently by an admin. Seeded at deploy time via `npm run seed:settings` (prefilled from the default `clothing` preset).
 
 **Full document shape:**
 ```json
 {
   "_id": "singleton",
-  "brand": { "name": "Attor", "tagline": "Essence of Distinction", "description": "Premium perfume oils crafted for the discerning.", "niche": "perfume_oil", "nicheLabel": "Perfume Oil", "logo": "/demo/perfume-oil/logo.png", "favicon": "", "currency": "usd", "deliveryOptions": [ { "name": "Store Pickup", "charge": 0, "country": "", "isActive": true }, { "name": "Inside Dhaka", "charge": 90, "country": "BD", "isActive": true }, { "name": "Outside Dhaka", "charge": 150, "country": "BD", "isActive": true }, { "name": "International", "charge": 15, "country": "", "isActive": true } ] },
+  "brand": { "name": "Attor", "tagline": "Define Your Style", "description": "Premium clothing for the modern individual.", "niche": "clothing", "nicheLabel": "Clothing", "logo": "/demo/clothing/logo.svg", "favicon": "", "currency": "usd", "deliveryOptions": [ { "name": "Store Pickup", "charge": 0, "country": "", "isActive": true }, { "name": "Inside Dhaka", "charge": 90, "country": "BD", "isActive": true }, { "name": "Outside Dhaka", "charge": 150, "country": "BD", "isActive": true }, { "name": "International", "charge": 15, "country": "", "isActive": true } ] },
   "theme": {
-    "colors": { "background": "oklch(1 0 0)", "foreground": "oklch(0.145 0 0)", "primary": "oklch(0.514 0.222 16.935)", "primaryForeground": "oklch(0.969 0.015 12.422)", "...": "28 full CSS color tokens (base + chart + sidebar)" },
-    "dark": { "enabled": false, "colors": { "...": "dark overrides" } },
-    "fonts": { "family": "Cormorant Garamond", "mono": "ui-monospace, SFMono-Regular, Menlo, monospace", "sizes": { "h1": "2.5rem", "h2": "2rem", "h3": "1.5rem", "body": "1rem", "small": "0.875rem" } },
-    "radius": "0.625rem",
+    "colors": { "background": "oklch(0.985 0.002 85)", "foreground": "oklch(0.19 0.02 65)", "primary": "oklch(0.42 0.12 45)", "primaryForeground": "oklch(0.98 0.01 45)", "...": "28 full CSS color tokens (base + chart + sidebar)" },
+    "dark": { "enabled": true, "colors": { "...": "dark overrides" } },
+    "fonts": { "family": "Playfair Display", "mono": "ui-monospace, SFMono-Regular, Menlo, monospace", "sizes": { "h1": "2.75rem", "h2": "2.125rem", "h3": "1.5rem", "body": "1rem", "small": "0.875rem" } },
+    "radius": "0.5rem",
     "globalCss": ""
   },
-  "hero": { "slides": [{ "image": "/demo/perfume-oil/banner/hero-1.webp", "headline": "Discover Your Signature Scent", "subtext": "...", "ctaText": "Explore Collection", "ctaLink": "/products", "order": 0 }] },
-  "testimonials": { "heading": "What Our Customers Say", "items": [{ "name": "Ayesha Rahman", "role": "Fragrance Collector", "quote": "...", "rating": 5, "avatar": "/demo/perfume-oil/testimonials/tm-3.jpg", "order": 0 }] },
+  "hero": { "slides": [{ "image": "/demo/clothing/hero-1.webp", "headline": "Elevate Your Everyday Style", "subtext": "...", "ctaText": "Shop Collection", "ctaLink": "/shop", "order": 0 }] },
+  "testimonials": { "heading": "What Our Customers Say", "items": [{ "name": "Ayesha Rahman", "role": "Verified Buyer", "quote": "...", "rating": 5, "avatar": "", "order": 0 }] },
   "navbar": {
-    "links": [{ "label": "Home", "url": "/", "order": 0, "children": [] }, { "label": "Products", "url": "/products", "order": 1, "children": [] }],
+    "links": [{ "label": "Home", "url": "/", "order": 0, "children": [] }, { "label": "Products", "url": "/shop", "order": 1, "children": [] }, { "label": "About", "url": "/about", "order": 2, "children": [] }, { "label": "Contact", "url": "/contact", "order": 3, "children": [] }],
     "groups": {
-      "public": [{ "label": "Home", "url": "/", "order": 0, "children": [] }],
-      "auth": [{ "label": "Login", "url": "/login", "order": 0, "children": [] }, { "label": "Sign Up", "url": "/signup", "order": 1, "children": [] }],
-      "customer": [{ "label": "My Account", "url": "/dashboard/customer", "order": 0, "children": [] }],
-      "admin": [{ "label": "Admin Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }]
+      "public": [{ "label": "Home", "url": "/", "order": 0, "children": [] }, { "label": "Products", "url": "/shop", "order": 1, "children": [] }, { "label": "About", "url": "/about", "order": 2, "children": [] }, { "label": "Contact", "url": "/contact", "order": 3, "children": [] }, { "label": "Login", "url": "/login", "order": 4, "children": [] }, { "label": "Register", "url": "/register", "order": 5, "children": [] }],
+      "auth": [],
+      "customer": [{ "label": "Dashboard", "url": "/dashboard/customer", "order": 0, "children": [] }, { "label": "My Orders", "url": "/dashboard/orders", "order": 1, "children": [] }, { "label": "Logout", "url": "/logout", "order": 2, "children": [] }],
+      "admin": [{ "label": "Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }, { "label": "Products", "url": "/dashboard/products", "order": 1, "children": [] }, { "label": "Orders", "url": "/dashboard/orders", "order": 2, "children": [] }, { "label": "Users", "url": "/dashboard/users", "order": 3, "children": [] }, { "label": "Settings", "url": "/dashboard/settings", "order": 4, "children": [] }, { "label": "Logout", "url": "/logout", "order": 5, "children": [] }]
     }
   },
-  "footer": { "description": "...", "columns": [{ "title": "Quick Links", "links": [{ "label": "Products", "url": "/products" }] }], "socialLinks": [{ "platform": "twitter", "url": "https://twitter.com/attor" }], "copyrightText": "© 2026 Attor. All rights reserved.", "newsletter": { "enabled": true, "heading": "Stay in the loop" } },
-  "contact": { "address": "123 Perfume Avenue, New York, NY 10001", "phone": "+1 (555) 123-4567", "email": "hello@attor.com", "hours": "Mon–Sat 9am–6pm", "mapEmbedUrl": "", "social": { "twitter": "https://twitter.com/attor", "instagram": "https://instagram.com/attor", "facebook": "https://facebook.com/attor" } },
-  "about": { "story": "...", "mission": "...", "image": "/demo/perfume-oil/about.jpeg", "stats": [{ "label": "Founded", "value": "2018" }, { "label": "Oud Variants", "value": "30+" }] },
-  "limitedOffer": { "enabled": false, "badge": "Limited Time", "title": "Summer Sale", "subtitle": "Up to 50% off", "ctaText": "Shop Now", "ctaLink": "/sale", "image": "", "endsAt": "2026-08-31T23:59:59.000Z" },
+  "footer": { "description": "Quality products curated for your lifestyle...", "columns": [{ "title": "Quick Links", "links": [{ "label": "Home", "url": "/" }, { "label": "Products", "url": "/shop" }, { "label": "About", "url": "/about" }, { "label": "Contact", "url": "/contact" }] }, { "title": "Shop", "links": [{ "label": "All Products", "url": "/shop" }] }, { "title": "Contact", "links": [{ "label": "About Us", "url": "/about" }, { "label": "Contact Us", "url": "/contact" }] }], "socialLinks": [{ "platform": "twitter", "url": "https://twitter.com/attor" }, { "platform": "instagram", "url": "https://instagram.com/attor" }, { "platform": "facebook", "url": "https://facebook.com/attor" }], "copyrightText": "© 2026 Attor. All rights reserved.", "newsletter": { "enabled": true, "heading": "Subscribe for exclusive offers" } },
+  "contact": { "address": "123 Fashion Avenue, New York, NY 10001", "phone": "+1 (555) 123-4567", "email": "hello@attor.com", "hours": "Mon–Sat 9am–6pm", "mapEmbedUrl": "", "social": { "twitter": "https://twitter.com/attor", "instagram": "https://instagram.com/attor", "facebook": "https://facebook.com/attor" } },
+  "about": { "story": "...", "mission": "...", "image": "/demo/clothing/about.jpg", "stats": [{ "label": "Founded", "value": "2020" }, { "label": "Collections", "value": "50+" }] },
+  "limitedOffer": { "enabled": false, "badge": "Limited Time", "title": "Seasonal Sale", "subtitle": "Up to 30% off selected items", "ctaText": "Shop Now", "ctaLink": "/shop", "image": "", "endsAt": "" },
   "createdAt": "2026-01-01T00:00:00.000Z",
   "updatedAt": "2026-01-01T00:00:00.000Z"
 }
 ```
 
-> The full static default (matching the seeded `perfume_oil` preset) is documented in `src/app/modules/settings/docs/settings.json` — use it as the frontend's static fallback data when the backend is unreachable.
+> The full static default (matching the seeded `clothing` preset) is documented in `src/app/modules/settings/docs/settings.json` — use it as the frontend's static fallback data when the backend is unreachable.
 
 ### 15.1 GET /api/v1/settings — Get settings (public)
 
@@ -1933,7 +1961,7 @@ Form fields:
   logo: <image file> (optional)
   favicon: <image file> (optional)
 ```
-Only provided brand fields are updated (unprovided ones keep their value). `currency` (single code string = active store currency; must be `usd`/`bdt`/`eur`/`gbp`/`inr`/`aed`/`aud`/`cad` — invalid codes rejected with 400) and `deliveryOptions` (used by order creation to resolve `deliveryCharge`) are optional.
+Only provided brand fields are updated (unprovided ones keep their value). `currency` (single code string = active store currency; must be `usd`/`bdt`/`eur`/`gbp`/`inr`/`aed`/`aud`/`cad` — invalid codes rejected with 400) and `deliveryOptions` (used by order creation to resolve `deliveryCharge`) are optional. **Uploading a new `logo`/`favicon` destroys the previous file from Cloudinary** (best-effort, after the DB write).
 
 **Response (200):**
 ```json
@@ -1946,7 +1974,7 @@ Only provided brand fields are updated (unprovided ones keep their value). `curr
 
 ### 15.3 PATCH /api/v1/settings/:section — Update one section (admin)
 
-Protected — `admin`. Sections: `theme`, `hero`, `testimonials`, `navbar`, `footer`, `contact`, `about`, `limitedOffer`. **Multipart** (`data` JSON + optional `images` files for hero/testimonials/about/limitedOffer; plain JSON for the rest). Each section has its own schema; unknown section → 400, invalid body → 400. Writes invalidate the cache.
+Protected — `admin`. Sections: `theme`, `hero`, `testimonials`, `navbar`, `footer`, `contact`, `about`, `limitedOffer`. **Multipart** (`data` JSON + optional `images` files for hero/testimonials/about/limitedOffer; plain JSON for the rest). Each section has its own schema; unknown section → 400, invalid body → 400. Writes invalidate the cache. **Replacing/removing an image in hero/testimonials/about/limitedOffer destroys the old file from Cloudinary** (best-effort, after the DB write).
 
 **Request (hero, plain JSON):**
 ```
@@ -1955,7 +1983,7 @@ Authorization: Bearer <adminAccessToken>
 Content-Type: application/json
 
 {
-  "slides": [{ "image": "/demo/perfume-oil/banner/hero-1.webp", "headline": "New Hero Title", "subtext": "Summer Sale", "ctaText": "Shop Now", "ctaLink": "/shop", "order": 0 }]
+  "slides": [{ "image": "/demo/clothing/hero-1.webp", "headline": "New Hero Title", "subtext": "Summer Sale", "ctaText": "Shop Now", "ctaLink": "/shop", "order": 0 }]
 }
 ```
 
@@ -1974,9 +2002,25 @@ Content-Type: application/json
 }
 ```
 
-### 15.4 PATCH /api/v1/settings/preset/:niche — Apply niche preset (admin)
+### 15.4 PATCH /api/v1/settings/preset/:niche — Apply niche THEME only (admin)
 
-Protected — `admin`. Applies a full niche preset (**brand + theme + hero + about + contact + footer**) in one write. Each niche ships its own theme (colors light+dark, fonts, radius): `clothing` → warm fashion palette + Playfair Display, `perfume_oil` → classic amber/rose palette + Cormorant Garamond, `eyewear` → cool blue/violet palette + Space Grotesk. Valid niches: `clothing`, `perfume_oil`, `eyewear`. Unknown → 400.
+Protected — `admin`. Applies **only the niche's theme** (colors light+dark, fonts, radius, globalCss) — brand, hero, navbar, footer and other sections are **untouched**. This lets an admin switch the store's look without clobbering customized content. Each niche ships its own unique theme:
+
+| Niche | Theme personality | Font | Radius |
+|---|---|---|---|
+| `shoes` | Street/athletic — bold red on charcoal | Oswald | `0.375rem` |
+| `watches` | Luxury — deep navy + champagne gold | Playfair Display | `0.5rem` |
+| `eyewear` | Precision blue/violet | Space Grotesk | `0.75rem` |
+| `clothing` | Warm earthy fashion | Playfair Display | `0.5rem` |
+| `electronics` | Futuristic cyan/violet on near-black | Orbitron | `0.25rem` |
+| `pet_animal` | Friendly warm amber + teal | Nunito | `1rem` |
+| `furniture` | Minimalist natural oak + cream | Merriweather | `0.25rem` |
+| `cosmetics` | Elegant rose + blush | Cormorant Garamond | `0.625rem` |
+| `sports` | Energetic green/lime | Barlow Condensed | `0.375rem` |
+| `jewelry` | Opulent black + champagne | Cinzel | `0.125rem` |
+| `perfume_oil` | Classic amber/rose fragrance | Cormorant Garamond | `0.625rem` |
+
+Valid niches: `shoes`, `watches`, `eyewear`, `clothing`, `electronics`, `pet_animal`, `furniture`, `cosmetics`, `sports`, `jewelry`, `perfume_oil`. Unknown → 400.
 
 **Request:**
 ```
@@ -1991,6 +2035,36 @@ Authorization: Bearer <adminAccessToken>
   "message": "clothing preset applied successfully",
   "data": { "...": "the whole updated settings document" }
 }
+```
+
+### 15.5 PATCH /api/v1/settings/reset/:niche — Full settings reset (admin)
+
+Protected — `admin`. Applies the **entire** niche preset in one write: **theme + brand + hero + about + contact + footer + navbar + testimonials + limitedOffer**. Use it to recover from accidental content loss (e.g. deleted nav links) or to fully re-theme the storefront.
+
+- The navbar is standardized: main `links` = Home / Products / About / Contact; `groups` = `public` (adds Login/Register), `customer` (Dashboard, My Orders, Logout) and `admin` (Dashboard, Products, Orders, Users, Settings, Logout).
+- The footer is standardized: **Quick Links** + **Shop** + **Contact** columns, social links, newsletter.
+- **`brand.currency` and `brand.deliveryOptions` are PRESERVED** if already set; if unset they fall back to the preset defaults (`usd` + the standard delivery list).
+- Replaced section images (hero/testimonials/about/limitedOffer) are **destroyed from Cloudinary** (best-effort, after the DB write).
+- Same 10 valid niches as 15.4. Unknown → 400.
+
+**Request:**
+```
+PATCH /api/v1/settings/reset/electronics
+Authorization: Bearer <adminAccessToken>
+```
+
+### 15.6 PATCH /api/v1/settings/reset/empty — Clear everything (admin)
+
+Protected — `admin`. Special `empty` reset: clears **all** sections to empty defaults (theme, hero, testimonials, navbar, footer, contact, about, limitedOffer) so the admin can fill everything back in one by one. Keeps:
+- **`brand.currency`** (as-is, not reset to `usd`).
+- **`brand.deliveryOptions`** (as-is).
+- A minimal brand identity (`name`, `niche`, `nicheLabel`) so the store stays usable while being rebuilt.
+- Existing section images are **destroyed from Cloudinary** (best-effort) since the sections are cleared.
+
+**Request:**
+```
+PATCH /api/v1/settings/reset/empty
+Authorization: Bearer <adminAccessToken>
 ```
 
 ---
@@ -2147,7 +2221,7 @@ These endpoints require `multipart/form-data` with the JSON payload **inside a `
 | Endpoint | `data` field | File field |
 |---|---|---|
 | `PATCH /user/update-profile` | JSON | `profilePhoto` (single) |
-| `POST|PATCH /product[/:productId]` | JSON | `images` (array, max 10) |
+| `POST|PATCH /product[/:productId]` | JSON | `images` (array, max 10) + `variantImages` (array, flat pool for variant `{}` placeholders) |
 | `POST|PATCH /brand[/:id]` | JSON | `logo` (single) |
 | `POST|PATCH /category[/:id]` | JSON | `icon` (single) |
 | `PATCH /settings` | JSON | `logo` (single) + `favicon` (single) |
@@ -2195,7 +2269,7 @@ When sending these fields (e.g. `category` on product create), send the **plain 
 
 1. Browse: `GET /product` (with filters) → product detail `GET /product/:id` → reviews `GET /review?product=<id>`
 2. Validate coupon at checkout: `GET /coupon/by-code/<CODE>`
-3. Create order: `POST /order` (paymentMethod `"COD"` or `"Online"`) — **no token required** (guest checkout); send the token if the user is logged in
+3. Create order: `POST /order` (paymentMethod `"COD"` or `"Online"`) — **no token required** (guest checkout); send the token if the user is logged in. For variant products include `variant: { sku }` per line (required when `hasVariants`).
 4. Pay online: call the provider init endpoint → redirect to `gatewayUrl`
 5. Handle redirect back on `/payment/success` / `/payment/failed`
 6. View orders: `GET /order/my-orders`
@@ -2210,7 +2284,7 @@ When sending these fields (e.g. `category` on product create), send the **plain 
 4. Manage orders: `GET /order`, `PATCH /order/:id/status`
 5. Dashboard: `GET /meta`
 6. Moderate reviews: `GET /review?isFlagged=true`
-7. Manage storefront: `GET /settings`, `PATCH /settings/:section`, `PATCH /settings/preset/:niche`
+7. Manage storefront: `GET /settings`, `PATCH /settings/:section`, `PATCH /settings/preset/:niche` (theme only), `PATCH /settings/reset/:niche` (full reset), `PATCH /settings/reset/empty` (clear everything)
 8. Audit log: `GET /activity`, `PATCH /activity/clear`
 
 ---
@@ -2232,8 +2306,8 @@ When sending these fields (e.g. `category` on product create), send the **plain 
 | 11 | PATCH | `/api/v1/user/:id/status` | admin | – |
 | 12 | GET | `/api/v1/product` | – | – |
 | 13 | GET | `/api/v1/product/:productId` | – | – |
-| 14 | POST | `/api/v1/product` | admin | ✅ `data` + `images` (≤10) |
-| 15 | PATCH | `/api/v1/product/:productId` | admin | ✅ `data` + `images` |
+| 14 | POST | `/api/v1/product` | admin | ✅ `data` + `images` (≤10) + `variantImages` |
+| 15 | PATCH | `/api/v1/product/:productId` | admin | ✅ `data` + `images` + `variantImages` |
 | 16 | DELETE | `/api/v1/product/:productId` | admin | – |
 | 17 | GET | `/api/v1/order` | admin | – |
 | 18 | GET | `/api/v1/order/my-orders` | customer | – |
@@ -2276,8 +2350,10 @@ When sending these fields (e.g. `category` on product create), send the **plain 
 | 55 | GET | `/api/v1/settings` | – | – |
 | 56 | PATCH | `/api/v1/settings` | admin | ✅ `data` + `logo` + `favicon` |
 | 57 | PATCH | `/api/v1/settings/:section` | admin | ✅ `data` + `images` (hero/testimonials/about/limitedOffer) |
-| 58 | PATCH | `/api/v1/settings/preset/:niche` | admin | – |
-| 59 | GET | `/api/v1/activity` | admin | – |
-| 60 | GET | `/api/v1/activity/:activityId` | admin | – |
-| 61 | PATCH | `/api/v1/activity/:activityId/clear` | admin | – |
-| 62 | PATCH | `/api/v1/activity/clear` | admin | – |
+| 58 | PATCH | `/api/v1/settings/preset/:niche` | admin | – (theme only) |
+| 59 | PATCH | `/api/v1/settings/reset/:niche` | admin | – |
+| 60 | PATCH | `/api/v1/settings/reset/empty` | admin | – |
+| 61 | GET | `/api/v1/activity` | admin | – |
+| 62 | GET | `/api/v1/activity/:activityId` | admin | – |
+| 63 | PATCH | `/api/v1/activity/:activityId/clear` | admin | – |
+| 64 | PATCH | `/api/v1/activity/clear` | admin | – |
