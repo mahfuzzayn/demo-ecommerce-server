@@ -198,7 +198,7 @@ No auth required — the storefront/frontend needs this to render.
         "navbar": {
             "links": [
                 { "label": "Home", "url": "/", "order": 0, "children": [] },
-                { "label": "Products", "url": "/shop", "order": 1, "children": [] },
+                { "label": "Products", "url": "/products", "order": 1, "children": [] },
                 { "label": "About", "url": "/about", "order": 2, "children": [] },
                 { "label": "Contact", "url": "/contact", "order": 3, "children": [] }
             ],
@@ -535,7 +535,7 @@ In Postman: `data` + `images` (one file per item; `images[i]` → `items[i].avat
 {
     "links": [
         { "label": "Home", "url": "/", "order": 0, "children": [] },
-        { "label": "Products", "url": "/shop", "order": 1, "children": [] },
+        { "label": "Products", "url": "/products", "order": 1, "children": [] },
         { "label": "About", "url": "/about", "order": 2, "children": [] },
         { "label": "Contact", "url": "/contact", "order": 3, "children": [] }
     ],

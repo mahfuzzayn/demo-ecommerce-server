@@ -106,21 +106,73 @@ export const countVariantImagePlaceholders = (variantImageSlots: any[]): number 
         return !publicId && !url;
     }).length;
 
+// Reconcile the color palette with the variants actually used.
+// `colorOptions` is the single source of truth for color swatches (name + hex).
+// When a variant's attributes contain a `Color` value that isn't in
+// colorOptions yet, it is silently auto-added (hex left empty for the admin to
+// fill) so the UI never has a swatch-less color and the admin doesn't have to
+// keep the two lists in sync manually.
+export const reconcileVariantColors = (
+    variants: any[],
+    colorOptions: { name: string; hex?: string }[],
+): { name: string; hex?: string }[] => {
+    const result = [...(colorOptions || [])];
+    const existing = new Set(result.map((c) => c.name.toLowerCase()));
+
+    for (const variant of variants || []) {
+        const color = variant?.attributes?.Color;
+        if (
+            typeof color === "string" &&
+            color.trim() &&
+            !existing.has(color.trim().toLowerCase())
+        ) {
+            result.push({ name: color.trim() });
+            existing.add(color.trim().toLowerCase());
+        }
+    }
+
+    return result;
+};
+
 // Verify every variant's attributes draw their keys and values from the
 // declared attribute axes. This keeps the variant system manageable for any
-// axis type — color, size, or custom names.
+// axis type — size, material, or custom names.
+//
+// `Color` is special-cased: it is NOT required to exist in the `attributes`
+// axes (the admin expresses colors through `colorOptions` swatches). A variant's
+// `Color` value is validated against `colorOptions` names instead. Only when no
+// `colorOptions` are provided does it fall back to the axes check (legacy).
 export const validateVariantAttributes = (
     variants: any[],
     attributes: { key: string; values: string[] }[],
+    colorOptions?: { name: string; hex?: string }[],
 ): void => {
     const axes = new Map(
         (attributes || []).map((attr) => [attr.key, attr.values || []]),
+    );
+    const colorNames = new Set(
+        (colorOptions || []).map((c) => c.name.toLowerCase()),
     );
 
     for (const variant of variants || []) {
         for (const [key, value] of Object.entries(
             variant.attributes || {},
         ) as [string, string][]) {
+            if (key === "Color") {
+                // Color is a display-palette concept — validate against
+                // colorOptions when available, otherwise fall through to the
+                // axes check for legacy products that declared a Color axis.
+                if (colorOptions?.length) {
+                    if (!colorNames.has(value.toLowerCase())) {
+                        throw new AppError(
+                            StatusCodes.BAD_REQUEST,
+                            `Variant color "${value}" is not in the product's colorOptions. Add it to colorOptions first (or it is auto-added on create/update).`,
+                        );
+                    }
+                    continue;
+                }
+            }
+
             const allowedValues = axes.get(key);
             if (!allowedValues) {
                 throw new AppError(

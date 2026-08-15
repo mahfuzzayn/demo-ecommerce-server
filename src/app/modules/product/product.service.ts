@@ -17,6 +17,7 @@ import {
     resolveProductSlug,
     mergeVariantImageFiles,
     validateVariantAttributes,
+    reconcileVariantColors,
     countVariantImagePlaceholders,
     destroyImagesFromCloudinary,
 } from "./product.utils";
@@ -100,12 +101,20 @@ const createProduct = async (
     }
 
     // Auto-flag as a variant product and harden the variant system:
-    // every variant's attributes must draw keys/values from the declared axes.
+    // every variant's attributes must draw keys/values from the declared axes,
+    // except `Color` which is sourced from colorOptions (auto-reconciled).
     if (payload.variants?.length) {
         payload.hasVariants = true;
+        // Silently auto-add any variant Color value that's missing from the
+        // palette so the UI never has a swatch-less color.
+        payload.colorOptions = reconcileVariantColors(
+            payload.variants,
+            payload.colorOptions as { name: string; hex?: string }[],
+        ) as any;
         validateVariantAttributes(
             payload.variants,
             payload.attributes as { key: string; values: string[] }[],
+            payload.colorOptions as { name: string; hex?: string }[],
         );
     }
 
@@ -221,14 +230,31 @@ const updateProduct = async (
     }
 
     // Harden the variant system on update too: attribute keys/values must come
-    // from the declared axes (merged with the existing ones when not resending).
+    // from the declared axes (merged with the existing ones when not resending),
+    // except `Color` which is sourced from colorOptions (auto-reconciled).
     if (payload.variants?.length) {
         const effectiveAttributes = payload.attributes?.length
             ? payload.attributes
             : (existingProduct.attributes as any) || [];
+
+        // Effective palette = sent colorOptions merged with the stored ones
+        // (when the client doesn't resend the palette, keep the existing).
+        const effectiveColorOptions = (
+            payload.colorOptions?.length
+                ? payload.colorOptions
+                : (existingProduct.colorOptions as any) || []
+        ) as { name: string; hex?: string }[];
+
+        // Silently auto-add any variant Color value missing from the palette.
+        payload.colorOptions = reconcileVariantColors(
+            payload.variants,
+            effectiveColorOptions,
+        ) as any;
+
         validateVariantAttributes(
             payload.variants,
             effectiveAttributes as { key: string; values: string[] }[],
+            payload.colorOptions as { name: string; hex?: string }[],
         );
     }
 

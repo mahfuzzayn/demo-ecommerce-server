@@ -22,7 +22,13 @@ Products **inherit** the store's currency from the settings brand (`brand.curren
 An optional `offerPrice` sub-doc: `{ type: "flat" | "percentage", value, startAt, endAt, isActive }`. `endAt` must be after `startAt` (else 400). The frontend computes the effective sale price: flat = `price - value`, percentage = `price - (price * value / 100)`.
 
 ### Variants
-Products can have a single default price/stock (no variants) or multiple `variants` (`hasVariants: true` — set automatically whenever `variants` has entries, on both create and update). Each variant has `sku`, `attributes` (e.g. `{ Color: "Black", Size: "M" }`), optional `price` (falls back to product price), `stock`, `imageUrls`, `isActive`. SKUs are auto-generated as `{PRODUCT_PREFIX}-{COLOR}-{SIZE}-{RANDOM}` when not provided (e.g. `SMAR-BLACK-M-7F3K9Q`). `colorOptions` stores the display palette (`{ name, hex }`). `attributes` lists the variant axes (`[{ key: "Color", values: ["Black", "White"] }, { key: "Size", values: ["S", "M", "L"] }]`) so the storefront can render filters/selectors; each variant's `attributes` map must draw its keys **and values** from these definitions — the server rejects (`400`) any variant attribute key/value that is not declared in the axes. This keeps the variant system manageable for any axis type: color, size, or custom names.
+Products can have a single default price/stock (no variants) or multiple `variants` (`hasVariants: true` — set automatically whenever `variants` has entries, on both create and update). Each variant has `sku`, `attributes` (e.g. `{ Color: "Black", Size: "M" }`), optional `price` (falls back to product price), `stock`, `imageUrls`, `isActive`. SKUs are auto-generated as `{PRODUCT_PREFIX}-{COLOR}-{SIZE}-{RANDOM}` when not provided (e.g. `SMAR-BLACK-M-7F3K9Q`).
+
+**`Color` is special — do NOT declare it in `attributes`.** Colors are expressed **once** in `colorOptions` (`[{ name, hex }]` — the swatch palette). A variant's `attributes` may reference `Color` by name (e.g. `{ Color: "Black", Size: "M" }`), and the server:
+- **auto-adds** any variant `Color` value missing from `colorOptions` (silently, with an empty `hex` for the admin to fill later) — so the UI never has a swatch-less color and the two lists never drift;
+- validates the `Color` value against `colorOptions` names (not an `attributes` axis).
+
+**Other axes (`Size`, `Material`, custom names, ...) go in `attributes`** (`[{ key, values }]`) so the storefront can render filters/selectors. Each variant's non-`Color` attribute keys **and values** must draw from these definitions — the server rejects (`400`) any variant attribute key/value not declared in the axes. This keeps the variant system manageable for any axis type, fully dynamic, with no color duplication.
 
 **Variant images** use the same `{ publicId, url, order }` shape as the main product images (`order: 0` = first/cover for that variant). New variant images can be uploaded as files in the `variantImages` multipart field (flat, in variant order) and each variant's `imageUrls` in `data` declares its image slots:
 - existing images → `{ publicId, order }` (the `url` is backfilled from the stored variant by `publicId`);
@@ -73,7 +79,7 @@ GET /api/v1/product?searchTerm=phone&minPrice=100&maxPrice=1000&page=1&limit=10
             ],
             "offerPrice": null,
             "colorOptions": [ { "name": "Black", "hex": "#000000" }, { "name": "White", "hex": "#FFFFFF" } ],
-            "attributes": [ { "key": "Color", "values": ["Black", "White"] }, { "key": "Size", "values": ["S", "M", "L"] } ],
+            "attributes": [ { "key": "Size", "values": ["S", "M", "L"] } ],
             "variants": [
                 {
                     "sku": "SMAR-BLACK-M-7F3K9Q",
@@ -90,7 +96,6 @@ GET /api/v1/product?searchTerm=phone&minPrice=100&maxPrice=1000&page=1&limit=10
             "isActive": true,
             "averageRating": 4.5,
             "ratingCount": 12,
-            "availableColors": ["Black", "White"],
             "specification": [
                 { "key": "RAM", "value": "8GB" },
                 { "key": "Storage", "value": "128GB" }
@@ -164,7 +169,7 @@ Fields:
     "specification": [{ "key": "RAM", "value": "8GB" }],
     "keyFeatures": ["5G Support"],
     "colorOptions": [ { "name": "Black", "hex": "#000000" }, { "name": "White", "hex": "#FFFFFF" } ],
-    "attributes": [ { "key": "Color", "values": ["Black", "White"] }, { "key": "Size", "values": ["S", "M", "L"] } ],
+    "attributes": [ { "key": "Size", "values": ["S", "M", "L"] } ],
     "variants": [
       { "attributes": { "Color": "Black", "Size": "M" }, "price": 799.99, "stock": 20, "imageUrls": [ {}, {} ] },
       { "attributes": { "Color": "White", "Size": "M" }, "price": 799.99, "stock": 15, "imageUrls": [ {} ] }
@@ -180,6 +185,7 @@ Fields:
 - Variant 2 (`White / M`) declares 1 placeholder `[{}]` → gets `white-m-1.jpg`.
 - A placeholder can also carry an explicit order: `[{ "order": 1 }, {}]`.
 - `hasVariants` is set to `true` automatically; missing `sku`s are auto-generated (`SMAR-BLACK-M-XXXXXX` style).
+- `Color` is read from `colorOptions` + the variant's `Color` value — **not** from an `attributes` axis. Any variant `Color` missing from `colorOptions` is **silently auto-added** (empty `hex`) so the swatch palette always matches the variants.
 
 **Response:**
 ```json
@@ -189,7 +195,7 @@ Fields:
     "data": { "...": "product object with populated category/brand, createdBy, reviews, and variant imageUrls filled from the uploaded files" }
 }
 ```
-Note: **No `currency` field** — it inherits from the store's brand settings. `slug` optional. `offerPrice.endAt` must be after `startAt` (400 otherwise). Uploaded main images become `{ publicId, url, order }` objects in the order uploaded; a `data`-level `imageUrls` array is accepted but **overridden** when `images` files are uploaded. Variant attribute keys/values must be declared in `attributes` (400 otherwise). Sending more `variantImages` files than placeholder slots → 400 with a count-mismatch message.
+Note: **No `currency` field** — it inherits from the store's brand settings. `slug` optional. `offerPrice.endAt` must be after `startAt` (400 otherwise). Uploaded main images become `{ publicId, url, order }` objects in the order uploaded; a `data`-level `imageUrls` array is accepted but **overridden** when `images` files are uploaded. Variant attribute keys/values must be declared in `attributes` (400 otherwise) — **except `Color`, which is validated against `colorOptions`**. Sending more `variantImages` files than placeholder slots → 400 with a count-mismatch message.
 
 ### PATCH /api/v1/product/:productId (Update Product)
 **Request — image management (multipart):**
@@ -235,7 +241,7 @@ Fields:
     "data": { "...": "updated product" }
 }
 ```
-Note: `isActive` can be toggled `true`/`false` freely. `slug` optional — same uniqueness rules as create. `offerPrice`, `colorOptions`, `attributes`, `variants`, and `hasVariants` are all updatable — `hasVariants` is set automatically from the `variants` array length. `currency` is accepted as an explicit override (unlike create). New/existing variant attribute keys and values must be declared in `attributes` (400 otherwise).
+Note: `isActive` can be toggled `true`/`false` freely. `slug` optional — same uniqueness rules as create. `offerPrice`, `colorOptions`, `attributes`, `variants`, and `hasVariants` are all updatable — `hasVariants` is set automatically from the `variants` array length. `currency` is accepted as an explicit override (unlike create). New/existing variant attribute keys and values must be declared in `attributes` (400 otherwise) — **except `Color`** (validated against `colorOptions`; missing colors are auto-added).
 
 ### DELETE /api/v1/product/:productId (Delete Product)
 **Request:**

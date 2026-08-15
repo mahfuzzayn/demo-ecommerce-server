@@ -151,10 +151,6 @@ const productSchema = new Schema<IProduct, ProductModel>(
             default: 0,
             min: 0,
         },
-        availableColors: {
-            type: [String],
-            default: [],
-        },
         specification: {
             type: [specificationSchema],
             default: [],

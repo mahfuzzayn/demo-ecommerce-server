@@ -38,7 +38,6 @@ const createProductValidationSchema = z.object({
         brand: z.string().min(1, "Brand ID is required"),
         imageUrls: z.array(productImageSchema).optional().default([]),
         isActive: z.boolean().optional().default(true),
-        availableColors: z.array(z.string()).optional().default([]),
         specification: z.array(specificationSchema).optional().default([]),
         keyFeatures: z.array(z.string()).optional().default([]),
         offerPrice: z
@@ -95,7 +94,6 @@ const updateProductValidationSchema = z.object({
         brand: z.string().min(1, "Brand ID is required").optional(),
         imageUrls: z.array(productImageSchema).optional(),
         isActive: z.boolean().optional(),
-        availableColors: z.array(z.string()).optional(),
         specification: z.array(specificationSchema).optional(),
         keyFeatures: z.array(z.string()).optional(),
         offerPrice: z

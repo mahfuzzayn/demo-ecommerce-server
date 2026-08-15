@@ -7,5 +7,4 @@ export const ProductFilterableFields = [
     "minPrice",
     "maxPrice",
     "isActive",
-    "availableColors",
 ];

@@ -38,7 +38,7 @@ export const defaultDeliveryOptions: IBrandSettings["deliveryOptions"] = [
 const buildNavbar = (): INavbarSection => ({
     links: [
         { label: "Home", url: "/", order: 0, children: [] },
-        { label: "Products", url: "/shop", order: 1, children: [] },
+        { label: "Products", url: "/products", order: 1, children: [] },
         { label: "About", url: "/about", order: 2, children: [] },
         { label: "Contact", url: "/contact", order: 3, children: [] },
     ],
@@ -77,7 +77,7 @@ const buildFooter = (): IFooterSection => ({
             title: "Quick Links",
             links: [
                 { label: "Home", url: "/" },
-                { label: "Products", url: "/shop" },
+                { label: "Products", url: "/products" },
                 { label: "About", url: "/about" },
                 { label: "Contact", url: "/contact" },
             ],
@@ -85,9 +85,9 @@ const buildFooter = (): IFooterSection => ({
         {
             title: "Shop",
             links: [
-                { label: "All Products", url: "/shop" },
-                { label: "New Arrivals", url: "/shop?sort=-createdAt" },
-                { label: "Best Sellers", url: "/shop?sort=-sold" },
+                { label: "All Products", url: "/products" },
+                { label: "New Arrivals", url: "/products?sort=-createdAt" },
+                { label: "Best Sellers", url: "/products?sort=-sold" },
             ],
         },
         {
@@ -148,7 +148,7 @@ const buildLimitedOffer = (): ILimitedOfferSection => ({
     title: "Seasonal Sale",
     subtitle: "Up to 30% off selected items",
     ctaText: "Shop Now",
-    ctaLink: "/shop",
+    ctaLink: "/products",
     image: "",
     endsAt: "",
 });
@@ -219,7 +219,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "From everyday sneakers to statement kicks — find the pair that moves with you.",
                     ctaText: "Shop Now",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -228,7 +228,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Engineered cushioning and grip for the streets, the gym, and everything between.",
                     ctaText: "Shop Performance",
-                    ctaLink: "/shop?category=performance",
+                    ctaLink: "/products?category=performance",
                     order: 1,
                 },
             ],
@@ -275,7 +275,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Automatic, quartz, and smart — every Attor Time piece is built to last generations.",
                     ctaText: "Explore Collection",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -284,7 +284,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Sapphire glass, Swiss movement, timeless design. Time is precious — wear it well.",
                     ctaText: "Shop Luxury",
-                    ctaLink: "/shop?category=luxury",
+                    ctaLink: "/products?category=luxury",
                     order: 1,
                 },
             ],
@@ -331,7 +331,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Handcrafted eyewear that blends precision optics with bold design.",
                     ctaText: "Browse Frames",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -340,7 +340,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "UV protection with undeniable attitude. Our sunglasses collection has you covered.",
                     ctaText: "Shop Sunglasses",
-                    ctaLink: "/shop?category=sunglasses",
+                    ctaLink: "/products?category=sunglasses",
                     order: 1,
                 },
                 {
@@ -349,7 +349,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Everyday optical frames engineered for comfort and clarity.",
                     ctaText: "Shop Optical",
-                    ctaLink: "/shop?category=optical",
+                    ctaLink: "/products?category=optical",
                     order: 2,
                 },
             ],
@@ -396,7 +396,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Discover curated collections designed for those who refuse to blend in.",
                     ctaText: "Shop Collection",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -405,7 +405,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Sharp tailoring meets everyday comfort.",
                     ctaText: "Shop Men",
-                    ctaLink: "/shop?category=men",
+                    ctaLink: "/products?category=men",
                     order: 1,
                 },
                 {
@@ -414,7 +414,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Our women's line is designed to move with you, not against you.",
                     ctaText: "Shop Women",
-                    ctaLink: "/shop?category=women",
+                    ctaLink: "/products?category=women",
                     order: 2,
                 },
             ],
@@ -461,7 +461,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "From smart home to high-performance gear — stay ahead of the curve.",
                     ctaText: "Shop Now",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -470,7 +470,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Cameras, audio, and accessories engineered for people who make things.",
                     ctaText: "Shop Creator Kit",
-                    ctaLink: "/shop?category=creators",
+                    ctaLink: "/products?category=creators",
                     order: 1,
                 },
             ],
@@ -517,7 +517,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Nutrition, toys, and care essentials your furry friends will love.",
                     ctaText: "Shop Now",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -526,7 +526,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Vet-approved products and honest advice for every stage of your pet's life.",
                     ctaText: "Shop Pet Care",
-                    ctaLink: "/shop?category=care",
+                    ctaLink: "/products?category=care",
                     order: 1,
                 },
             ],
@@ -573,7 +573,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Sustainably sourced, beautifully crafted furniture for every room.",
                     ctaText: "Shop Now",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -582,7 +582,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Solid wood, honest joinery, and designs that never go out of style.",
                     ctaText: "Shop Living Room",
-                    ctaLink: "/shop?category=living",
+                    ctaLink: "/products?category=living",
                     order: 1,
                 },
             ],
@@ -629,7 +629,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Clean, cruelty-free beauty products formulated with skin-loving ingredients.",
                     ctaText: "Shop Now",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -638,7 +638,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "From skincare to makeup — a complete ritual for radiant, confident you.",
                     ctaText: "Shop Skincare",
-                    ctaLink: "/shop?category=skincare",
+                    ctaLink: "/products?category=skincare",
                     order: 1,
                 },
             ],
@@ -685,7 +685,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Performance apparel and equipment trusted by athletes everywhere.",
                     ctaText: "Shop Now",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -694,7 +694,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "From the track to the court — gear that keeps up with your ambition.",
                     ctaText: "Shop Equipment",
-                    ctaLink: "/shop?category=equipment",
+                    ctaLink: "/products?category=equipment",
                     order: 1,
                 },
             ],
@@ -741,7 +741,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Ethically sourced fine jewelry crafted by master artisans.",
                     ctaText: "Shop Now",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -750,7 +750,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Engagement, gifts, and everyday elegance — pieces that tell your story.",
                     ctaText: "Shop Engagement",
-                    ctaLink: "/shop?category=engagement",
+                    ctaLink: "/products?category=engagement",
                     order: 1,
                 },
             ],
@@ -797,7 +797,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Explore our curated collection of artisanal perfume oils — from deep, smoky ouds to luminous florals. Find the fragrance that speaks to you.",
                     ctaText: "Explore Collection",
-                    ctaLink: "/shop",
+                    ctaLink: "/products",
                     order: 0,
                 },
                 {
@@ -806,7 +806,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "Journey through our collection of rare and precious oud oils — aged, layered, and utterly unforgettable.",
                     ctaText: "Shop Oud Collection",
-                    ctaLink: "/shop?category=oud",
+                    ctaLink: "/products?category=oud",
                     order: 1,
                 },
                 {
@@ -815,7 +815,7 @@ export const settingsPresets: Record<string, ISettingsPreset> = {
                     subtext:
                         "From Damask rose to jasmine sambac — our floral attars capture nature's most exquisite moments in every bottle.",
                     ctaText: "Shop Florals",
-                    ctaLink: "/shop?category=floral",
+                    ctaLink: "/products?category=floral",
                     order: 2,
                 },
             ],

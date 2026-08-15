@@ -549,7 +549,7 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/product`
 
-Product model fields: `name`, `slug` (auto-generated), `description`, `price`, `currency` (inherited from store brand settings — not sent on create; **accepted on update**), `stock`, `weight`, `category` (ObjectId → Category), `brand` (ObjectId → Brand), `createdBy` (ObjectId → User, attached automatically), `imageUrls[]` (`{ publicId, url, order }`), `isActive`, `isDeleted`, `averageRating`, `ratingCount`, `availableColors[]`, `specification[]` (`{key, value}`), `keyFeatures[]`, `offerPrice` (`{ type: flat|percentage, value, startAt, endAt, isActive }`), `colorOptions[]` (`{ name, hex }`), `attributes[]` (`{ key, values }` — variant axes), `variants[]` (`{ sku, attributes, price?, stock, imageUrls, isActive }` — variant `imageUrls` use the same `{ publicId, url, order }` shape; new-image slots are sent as `{}` placeholders filled from `variantImages` files), `hasVariants` (auto-set from the presence of `variants`), timestamps.
+Product model fields: `name`, `slug` (auto-generated), `description`, `price`, `currency` (inherited from store brand settings — not sent on create; **accepted on update**), `stock`, `weight`, `category` (ObjectId → Category), `brand` (ObjectId → Brand), `createdBy` (ObjectId → User, attached automatically), `imageUrls[]` (`{ publicId, url, order }`), `isActive`, `isDeleted`, `averageRating`, `ratingCount`, `specification[]` (`{key, value}`), `keyFeatures[]`, `offerPrice` (`{ type: flat|percentage, value, startAt, endAt, isActive }`), `colorOptions[]` (`{ name, hex }` — **the single source of truth for colors**), `attributes[]` (`{ key, values }` — variant axes, **non-color only**, e.g. Size/Material/custom), `variants[]` (`{ sku, attributes, price?, stock, imageUrls, isActive }` — a variant's `attributes` may include `Color` by name, validated against `colorOptions` and **auto-added** to it if missing; `imageUrls` use the same `{ publicId, url, order }` shape with `{}` placeholders filled from `variantImages`), `hasVariants` (auto-set from the presence of `variants`), timestamps.
 
 ### 7.1 GET /api/v1/product — Get all products
 
@@ -560,7 +560,6 @@ Public. Returns **non-deleted only** (`isDeleted: false`). Category (`name`, `sl
 - `brand` — brand ObjectId
 - `minPrice`, `maxPrice` — numeric price range
 - `isActive` — boolean
-- `availableColors` — color string
 
 **Request:**
 ```
@@ -602,10 +601,9 @@ GET /api/v1/product?searchTerm=phone&minPrice=100&maxPrice=1000&page=1&limit=10
       "isActive": true,
       "averageRating": 4.5,
       "ratingCount": 12,
-      "availableColors": ["Black", "White"],
       "offerPrice": null,
       "colorOptions": [ { "name": "Black", "hex": "#000000" }, { "name": "White", "hex": "#FFFFFF" } ],
-      "attributes": [ { "key": "Color", "values": ["Black", "White"] }, { "key": "Size", "values": ["S", "M", "L"] } ],
+      "attributes": [ { "key": "Size", "values": ["S", "M", "L"] } ],
       "variants": [
         {
           "sku": "SMAR-BLACK-M-7F3K9Q",
@@ -662,16 +660,17 @@ Authorization: Bearer <adminAccessToken>
 Content-Type: multipart/form-data
 
 Form fields:
-  data: {"name":"Smartphone X","description":"Latest smartphone","price":799.99,"stock":50,"weight":0.2,"category":"<categoryId>","brand":"<brandId>","colorOptions":[{"name":"Black","hex":"#000000"}],"attributes":[{"key":"Color","values":["Black","White"]},{"key":"Size","values":["S","M","L"]}],"variants":[{"attributes":{"Color":"Black","Size":"M"},"price":799.99,"stock":20,"imageUrls":[{},{}]},{"attributes":{"Color":"White","Size":"M"},"price":799.99,"stock":15,"imageUrls":[{}]}],"offerPrice":{"type":"flat","value":50,"startAt":"2026-08-01","endAt":"2026-08-31"},"availableColors":["Black","White"],"specification":[{"key":"RAM","value":"8GB"}],"keyFeatures":["5G Support"]}
+  data: {"name":"Smartphone X","description":"Latest smartphone","price":799.99,"stock":50,"weight":0.2,"category":"<categoryId>","brand":"<brandId>","colorOptions":[{"name":"Black","hex":"#000000"},{"name":"White","hex":"#FFFFFF"}],"attributes":[{"key":"Size","values":["S","M","L"]}],"variants":[{"attributes":{"Color":"Black","Size":"M"},"price":799.99,"stock":20,"imageUrls":[{},{}]},{"attributes":{"Color":"White","Size":"M"},"price":799.99,"stock":15,"imageUrls":[{}]}],"offerPrice":{"type":"flat","value":50,"startAt":"2026-08-01","endAt":"2026-08-31"},"specification":[{"key":"RAM","value":"8GB"}],"keyFeatures":["5G Support"]}
   images: <file1> <file2> <file3> ... (max 10, main photos)
   variantImages: <black-m-1.jpg> <black-m-2.jpg> <white-m-1.jpg> ... (flat, in variant order)
 ```
 
 - In the example: variant 1 (`Black / M`) declares 2 `{}` placeholders → gets `black-m-1.jpg`, `black-m-2.jpg`; variant 2 (`White / M`) declares 1 → gets `white-m-1.jpg`. Files are consumed **in order of appearance across all variants' placeholders**.
-- Every variant's `attributes` keys **and** values must be declared in the `attributes` axes — otherwise `400` with a clear message.
+- `Color` is **not** declared in `attributes` — it lives in `colorOptions` (swatches). A variant's `attributes` may reference `Color` by name; any value missing from `colorOptions` is **silently auto-added** (empty `hex`).
+- Every other variant `attributes` key **and** value must be declared in the `attributes` axes — otherwise `400` with a clear message.
 - `hasVariants` is set to `true` automatically when `variants` has entries.
 
-Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `brand`. Optional: `slug`, `stock` (default 0), `imageUrls`, `isActive` (default true), `availableColors`, `specification`, `keyFeatures`, `colorOptions`, `attributes` (variant axes `{ key, values }`), `variants` (SKUs auto-generated as `{PREFIX}-{COLOR}-{SIZE}-{RANDOM}` when omitted; `imageUrls` entries are `{}` placeholders for new variant images), `hasVariants`, `offerPrice`. **Do NOT send `currency`** — it inherits from the store's brand settings (`brand.currency`). `createdBy` is attached automatically. `offerPrice.endAt` must be after `startAt` (400 otherwise).
+Required `data` fields: `name`, `description`, `price`, `weight`, `category`, `brand`. Optional: `slug`, `stock` (default 0), `imageUrls`, `isActive` (default true), `specification`, `keyFeatures`, `colorOptions`, `attributes` (variant axes `{ key, values }` — non-color), `variants` (SKUs auto-generated as `{PREFIX}-{COLOR}-{SIZE}-{RANDOM}` when omitted; `imageUrls` entries are `{}` placeholders for new variant images), `hasVariants`, `offerPrice`. **Do NOT send `currency`** — it inherits from the store's brand settings (`brand.currency`). `createdBy` is attached automatically. `offerPrice.endAt` must be after `startAt` (400 otherwise).
 
 **Response (201):**
 ```json
@@ -711,7 +710,7 @@ Form fields:
   variantImages: <black-m-new.jpg> <white-l-new.jpg> (optional, fills the {} placeholders in order)
 ```
 
-In the example: variant 1 keeps its existing image and declares one new slot (`{}` → `black-m-new.jpg`); variant 2 (new) declares one slot (`{}` → `white-l-new.jpg`). Sending more `variantImages` files than total placeholders → `400` count-mismatch.
+In the example: variant 1 keeps its existing image and declares one new slot (`{}` → `black-m-new.jpg`); variant 2 (new) declares one slot (`{}` → `white-l-new.jpg`). Sending more `variantImages` files than total placeholders → `400` count-mismatch. `Color` in a variant's `attributes` is validated against `colorOptions` (missing colors auto-added); `colorOptions` not resent on update are merged with the stored palette.
 
 **Response (200):**
 ```json
@@ -1904,20 +1903,20 @@ The Settings module is a **single singleton document** (`_id: "singleton"`) that
     "radius": "0.5rem",
     "globalCss": ""
   },
-  "hero": { "slides": [{ "image": "/demo/clothing/hero-1.webp", "headline": "Elevate Your Everyday Style", "subtext": "...", "ctaText": "Shop Collection", "ctaLink": "/shop", "order": 0 }] },
+  "hero": { "slides": [{ "image": "/demo/clothing/hero-1.webp", "headline": "Elevate Your Everyday Style", "subtext": "...", "ctaText": "Shop Collection", "ctaLink": "/products", "order": 0 }] },
   "testimonials": { "heading": "What Our Customers Say", "items": [{ "name": "Ayesha Rahman", "role": "Verified Buyer", "quote": "...", "rating": 5, "avatar": "", "order": 0 }] },
   "navbar": {
-    "links": [{ "label": "Home", "url": "/", "order": 0, "children": [] }, { "label": "Products", "url": "/shop", "order": 1, "children": [] }, { "label": "About", "url": "/about", "order": 2, "children": [] }, { "label": "Contact", "url": "/contact", "order": 3, "children": [] }],
+    "links": [{ "label": "Home", "url": "/", "order": 0, "children": [] }, { "label": "Products", "url": "/products", "order": 1, "children": [] }, { "label": "About", "url": "/about", "order": 2, "children": [] }, { "label": "Contact", "url": "/contact", "order": 3, "children": [] }],
     "groups": {
       "auth": [{ "label": "Login", "url": "/login", "order": 0, "children": [] }],
       "customer": [{ "label": "Dashboard", "url": "/dashboard/customer", "order": 0, "children": [] }, { "label": "Logout", "url": "/logout", "order": 1, "children": [] }],
       "admin": [{ "label": "Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }, { "label": "Logout", "url": "/logout", "order": 1, "children": [] }]
     }
   },
-  "footer": { "description": "Quality products curated for your lifestyle...", "columns": [{ "title": "Quick Links", "links": [{ "label": "Home", "url": "/" }, { "label": "Products", "url": "/shop" }, { "label": "About", "url": "/about" }, { "label": "Contact", "url": "/contact" }] }, { "title": "Shop", "links": [{ "label": "All Products", "url": "/shop" }] }, { "title": "Contact", "links": [{ "label": "About Us", "url": "/about" }, { "label": "Contact Us", "url": "/contact" }] }], "socialLinks": [{ "platform": "twitter", "url": "https://twitter.com/attor" }, { "platform": "instagram", "url": "https://instagram.com/attor" }, { "platform": "facebook", "url": "https://facebook.com/attor" }], "copyrightText": "© 2026 Attor. All rights reserved.", "newsletter": { "enabled": true, "heading": "Subscribe for exclusive offers" } },
+  "footer": { "description": "Quality products curated for your lifestyle...", "columns": [{ "title": "Quick Links", "links": [{ "label": "Home", "url": "/" }, { "label": "Products", "url": "/products" }, { "label": "About", "url": "/about" }, { "label": "Contact", "url": "/contact" }] }, { "title": "Shop", "links": [{ "label": "All Products", "url": "/products" }] }, { "title": "Contact", "links": [{ "label": "About Us", "url": "/about" }, { "label": "Contact Us", "url": "/contact" }] }], "socialLinks": [{ "platform": "twitter", "url": "https://twitter.com/attor" }, { "platform": "instagram", "url": "https://instagram.com/attor" }, { "platform": "facebook", "url": "https://facebook.com/attor" }], "copyrightText": "© 2026 Attor. All rights reserved.", "newsletter": { "enabled": true, "heading": "Subscribe for exclusive offers" } },
   "contact": { "address": "123 Fashion Avenue, New York, NY 10001", "phone": "+1 (555) 123-4567", "email": "hello@attor.com", "hours": "Mon–Sat 9am–6pm", "mapEmbedUrl": "", "social": { "twitter": "https://twitter.com/attor", "instagram": "https://instagram.com/attor", "facebook": "https://facebook.com/attor" } },
   "about": { "story": "...", "mission": "...", "image": "/demo/clothing/about.jpg", "stats": [{ "label": "Founded", "value": "2020" }, { "label": "Collections", "value": "50+" }] },
-  "limitedOffer": { "enabled": false, "badge": "Limited Time", "title": "Seasonal Sale", "subtitle": "Up to 30% off selected items", "ctaText": "Shop Now", "ctaLink": "/shop", "image": "", "endsAt": "" },
+  "limitedOffer": { "enabled": false, "badge": "Limited Time", "title": "Seasonal Sale", "subtitle": "Up to 30% off selected items", "ctaText": "Shop Now", "ctaLink": "/products", "image": "", "endsAt": "" },
   "createdAt": "2026-01-01T00:00:00.000Z",
   "updatedAt": "2026-01-01T00:00:00.000Z"
 }
@@ -1982,7 +1981,7 @@ Authorization: Bearer <adminAccessToken>
 Content-Type: application/json
 
 {
-  "slides": [{ "image": "/demo/clothing/hero-1.webp", "headline": "New Hero Title", "subtext": "Summer Sale", "ctaText": "Shop Now", "ctaLink": "/shop", "order": 0 }]
+  "slides": [{ "image": "/demo/clothing/hero-1.webp", "headline": "New Hero Title", "subtext": "Summer Sale", "ctaText": "Shop Now", "ctaLink": "/products", "order": 0 }]
 }
 ```
 

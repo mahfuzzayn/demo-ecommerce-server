@@ -65,7 +65,6 @@ export interface IProduct extends Document {
     reviews: Types.ObjectId[];
     averageRating: number;
     ratingCount: number;
-    availableColors: string[];
     specification: ISpecification[];
     keyFeatures: string[];
     offerPrice?: IOfferPrice | null;

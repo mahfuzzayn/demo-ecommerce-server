@@ -163,7 +163,7 @@ Slides shown in the hero banner. `image` is positional-uploaded; `order` sorts t
             "headline": "Discover Your Signature Scent",
             "subtext": "Explore our curated collection of artisanal perfume oils - from deep, smoky ouds to luminous florals. Find the fragrance that speaks to you.",
             "ctaText": "Explore Collection",
-            "ctaLink": "/shop",
+            "ctaLink": "/products",
             "order": 0
         },
         {
@@ -171,7 +171,7 @@ Slides shown in the hero banner. `image` is positional-uploaded; `order` sorts t
             "headline": "The Art of Oud",
             "subtext": "Journey through our collection of rare and precious oud oils - aged, layered, and utterly unforgettable.",
             "ctaText": "Shop Oud Collection",
-            "ctaLink": "/shop?category=oud",
+            "ctaLink": "/products?category=oud",
             "order": 1
         },
         {
@@ -179,7 +179,7 @@ Slides shown in the hero banner. `image` is positional-uploaded; `order` sorts t
             "headline": "Bloom in Every Drop",
             "subtext": "From Damask rose to jasmine sambac - our floral attars capture nature's most exquisite moments in every bottle.",
             "ctaText": "Shop Florals",
-            "ctaLink": "/shop?category=floral",
+            "ctaLink": "/products?category=floral",
             "order": 2
         }
     ]
@@ -227,12 +227,12 @@ Navigation links with nested children + role-based link groups. The frontend ren
     "links": [
         {
             "label": "Shop",
-            "url": "/shop",
+            "url": "/products",
             "order": 0,
             "children": [
-                { "label": "Oud", "url": "/shop?category=oud", "order": 0 },
-                { "label": "Floral", "url": "/shop?category=floral", "order": 1 },
-                { "label": "Citrus", "url": "/shop?category=citrus", "order": 2 }
+                { "label": "Oud", "url": "/products?category=oud", "order": 0 },
+                { "label": "Floral", "url": "/products?category=floral", "order": 1 },
+                { "label": "Citrus", "url": "/products?category=citrus", "order": 2 }
             ]
         },
         {
@@ -272,9 +272,9 @@ Footer content: description, link columns, socials, copyright, newsletter prompt
         {
             "title": "Shop",
             "links": [
-                { "label": "Oud", "url": "/shop?category=oud" },
-                { "label": "Floral", "url": "/shop?category=floral" },
-                { "label": "Citrus", "url": "/shop?category=citrus" }
+                { "label": "Oud", "url": "/products?category=oud" },
+                { "label": "Floral", "url": "/products?category=floral" },
+                { "label": "Citrus", "url": "/products?category=citrus" }
             ]
         },
         {
