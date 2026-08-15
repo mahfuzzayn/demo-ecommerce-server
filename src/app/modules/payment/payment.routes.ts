@@ -2,15 +2,12 @@ import { Router } from "express";
 import { PaymentController } from "./payment.controller";
 import validateRequest from "../../middleware/validateRequest";
 import { PaymentValidation } from "./payment.validation";
-import { UserRole } from "../user/user.interface";
-import auth from "../../middleware/auth";
 
 const router = Router();
 
-// Stripe
+// Stripe — public so guest (non-logged-in) users can initiate payment
 router.post(
     "/:orderId/stripe/init",
-    auth(UserRole.ADMIN, UserRole.CUSTOMER),
     validateRequest(PaymentValidation.stripeInitValidationSchema),
     PaymentController.initiateStripePayment,
 );
@@ -19,10 +16,9 @@ router.post(
 router.all("/stripe/success", PaymentController.validateStripePayment);
 router.all("/stripe/cancel", PaymentController.validateStripePayment);
 
-// SSLCommerz
+// SSLCommerz — public so guest (non-logged-in) users can initiate payment
 router.post(
     "/:orderId/sslcommerz/init",
-    auth(UserRole.ADMIN, UserRole.CUSTOMER),
     validateRequest(PaymentValidation.sslCommerzInitValidationSchema),
     PaymentController.initiateSSLCommerzPayment,
 );
@@ -30,17 +26,15 @@ router.post(
 // SSLCommerz — accepts POST (SSLCommerz server) and GET (browser redirect)
 router.all("/sslcommerz/validate", PaymentController.validateSSLCommerzPayment);
 
-// bKash
+// bKash — public so guest (non-logged-in) users can initiate and validate payment
 router.post(
     "/:orderId/bkash/init",
-    auth(UserRole.ADMIN, UserRole.CUSTOMER),
     validateRequest(PaymentValidation.bkashInitValidationSchema),
     PaymentController.initiateBkashPayment,
 );
 
 router.post(
     "/bkash/validate",
-    auth(UserRole.ADMIN, UserRole.CUSTOMER),
     validateRequest(PaymentValidation.bkashValidateValidationSchema),
     PaymentController.validateBkashPayment,
 );

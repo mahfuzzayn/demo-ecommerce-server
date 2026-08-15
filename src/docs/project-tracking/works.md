@@ -18,8 +18,8 @@ User profile photoUrl needs a removal process, let user send photoUrl: "", it wi
 2. Product create/update update, size, color wise, imageUrls, keep, remove, variants images, offerPrice (Done)
 3. Order create with variants, offerPrice. (Done)
 3. Update Settings theme preset, default should have all sections filled, keep 10 types of popular niche theme, reset theme option with empty (Done)
-
-4.  Product server communication error: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error.
+4.  Product server communication error: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error. (Done)
+Reason: Production origin didn't added to cors origin list
 
 
 ### Future Fixes (Later)

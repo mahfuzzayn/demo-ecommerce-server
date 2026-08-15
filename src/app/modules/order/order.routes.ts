@@ -23,9 +23,9 @@ router.get(
 );
 
 // Order invoice — the frontend renders it (react-pdf). Verifies paid status.
+// Public so guest (non-logged-in) users can download the invoice.
 router.get(
     "/:orderId/invoice",
-    auth(UserRole.ADMIN, UserRole.CUSTOMER),
     OrderController.getInvoiceData,
 );
 
