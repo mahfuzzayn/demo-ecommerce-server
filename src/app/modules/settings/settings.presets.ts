@@ -42,16 +42,10 @@ const buildNavbar = (): INavbarSection => ({
         { label: "About", url: "/about", order: 2, children: [] },
         { label: "Contact", url: "/contact", order: 3, children: [] },
     ],
+    // Public links live in `links` — the role `groups` only add role-specific
+    // actions (login, dashboard + logout) on top of the always-visible links.
     groups: {
-        public: [
-            { label: "Home", url: "/", order: 0, children: [] },
-            { label: "Products", url: "/shop", order: 1, children: [] },
-            { label: "About", url: "/about", order: 2, children: [] },
-            { label: "Contact", url: "/contact", order: 3, children: [] },
-            { label: "Login", url: "/login", order: 4, children: [] },
-            { label: "Register", url: "/register", order: 5, children: [] },
-        ],
-        auth: [],
+        auth: [{ label: "Login", url: "/login", order: 0, children: [] }],
         customer: [
             {
                 label: "Dashboard",
@@ -59,13 +53,7 @@ const buildNavbar = (): INavbarSection => ({
                 order: 0,
                 children: [],
             },
-            {
-                label: "My Orders",
-                url: "/dashboard/orders",
-                order: 1,
-                children: [],
-            },
-            { label: "Logout", url: "/logout", order: 2, children: [] },
+            { label: "Logout", url: "/logout", order: 1, children: [] },
         ],
         admin: [
             {
@@ -74,31 +62,7 @@ const buildNavbar = (): INavbarSection => ({
                 order: 0,
                 children: [],
             },
-            {
-                label: "Products",
-                url: "/dashboard/products",
-                order: 1,
-                children: [],
-            },
-            {
-                label: "Orders",
-                url: "/dashboard/orders",
-                order: 2,
-                children: [],
-            },
-            {
-                label: "Users",
-                url: "/dashboard/users",
-                order: 3,
-                children: [],
-            },
-            {
-                label: "Settings",
-                url: "/dashboard/settings",
-                order: 4,
-                children: [],
-            },
-            { label: "Logout", url: "/logout", order: 5, children: [] },
+            { label: "Logout", url: "/logout", order: 1, children: [] },
         ],
     },
 });

@@ -200,7 +200,6 @@ const navLinkSchema = new Schema(
 
 const navGroupSchema = new Schema(
     {
-        public: { type: [navLinkSchema], default: [] },
         auth: { type: [navLinkSchema], default: [] },
         customer: { type: [navLinkSchema], default: [] },
         admin: { type: [navLinkSchema], default: [] },

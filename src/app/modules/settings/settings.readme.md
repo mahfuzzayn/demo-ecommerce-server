@@ -198,26 +198,21 @@ No auth required — the storefront/frontend needs this to render.
         "navbar": {
             "links": [
                 { "label": "Home", "url": "/", "order": 0, "children": [] },
-                { "label": "Products", "url": "/products", "order": 1, "children": [] },
+                { "label": "Products", "url": "/shop", "order": 1, "children": [] },
                 { "label": "About", "url": "/about", "order": 2, "children": [] },
                 { "label": "Contact", "url": "/contact", "order": 3, "children": [] }
             ],
             "groups": {
-                "public": [
-                    { "label": "Home", "url": "/", "order": 0, "children": [] },
-                    { "label": "Products", "url": "/products", "order": 1, "children": [] },
-                    { "label": "About", "url": "/about", "order": 2, "children": [] },
-                    { "label": "Contact", "url": "/contact", "order": 3, "children": [] }
-                ],
                 "auth": [
-                    { "label": "Login", "url": "/login", "order": 0, "children": [] },
-                    { "label": "Sign Up", "url": "/signup", "order": 1, "children": [] }
+                    { "label": "Login", "url": "/login", "order": 0, "children": [] }
                 ],
                 "customer": [
-                    { "label": "My Account", "url": "/dashboard/customer", "order": 0, "children": [] }
+                    { "label": "Dashboard", "url": "/dashboard/customer", "order": 0, "children": [] },
+                    { "label": "Logout", "url": "/logout", "order": 1, "children": [] }
                 ],
                 "admin": [
-                    { "label": "Admin Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }
+                    { "label": "Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] },
+                    { "label": "Logout", "url": "/logout", "order": 1, "children": [] }
                 ]
             }
         },
@@ -540,26 +535,21 @@ In Postman: `data` + `images` (one file per item; `images[i]` → `items[i].avat
 {
     "links": [
         { "label": "Home", "url": "/", "order": 0, "children": [] },
-        { "label": "Products", "url": "/products", "order": 1, "children": [] },
+        { "label": "Products", "url": "/shop", "order": 1, "children": [] },
         { "label": "About", "url": "/about", "order": 2, "children": [] },
         { "label": "Contact", "url": "/contact", "order": 3, "children": [] }
     ],
     "groups": {
-        "public": [
-            { "label": "Home", "url": "/", "order": 0, "children": [] },
-            { "label": "Products", "url": "/products", "order": 1, "children": [] },
-            { "label": "About", "url": "/about", "order": 2, "children": [] },
-            { "label": "Contact", "url": "/contact", "order": 3, "children": [] }
-        ],
         "auth": [
-            { "label": "Login", "url": "/login", "order": 0, "children": [] },
-            { "label": "Sign Up", "url": "/signup", "order": 1, "children": [] }
+            { "label": "Login", "url": "/login", "order": 0, "children": [] }
         ],
         "customer": [
-            { "label": "My Account", "url": "/dashboard/customer", "order": 0, "children": [] }
+            { "label": "Dashboard", "url": "/dashboard/customer", "order": 0, "children": [] },
+            { "label": "Logout", "url": "/logout", "order": 1, "children": [] }
         ],
         "admin": [
-            { "label": "Admin Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }
+            { "label": "Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] },
+            { "label": "Logout", "url": "/logout", "order": 1, "children": [] }
         ]
     }
 }
@@ -680,7 +670,7 @@ Authorization: Bearer <admin_token>
 ```
 Applies the **entire** niche preset in one write: **theme + brand + hero + about + contact + footer + navbar + testimonials + limitedOffer**. Use this to recover from accidental content loss (e.g. deleted nav links) or to fully re-theme the storefront.
 
-- **Navbar** is standardized: main `links` = Home / Products / About / Contact; role `groups` provide `public` (adds Login/Register), `customer` (Dashboard, My Orders, Logout) and `admin` (Dashboard, Products, Orders, Users, Settings, Logout) — customer vs admin dashboard differ.
+- **Navbar** is standardized: main `links` = Home / Products / About / Contact (public links — no redundant `public` group); role `groups` are `auth` (Login), `customer` (Dashboard, Logout) and `admin` (Dashboard, Logout).
 - **Footer** is standardized: **Quick Links** (Home, Products, About, Contact) + **Shop** column + **Contact** column + social links + newsletter.
 - **Brand currency + delivery options are PRESERVED** if already set (the admin may have customized them); if unset they fall back to the preset defaults (`usd` + the standard delivery list).
 - Old section images (hero slides, testimonial avatars, about/limitedOffer images) replaced by the reset are **destroyed from Cloudinary** (best-effort, after the DB write).

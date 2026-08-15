@@ -78,9 +78,9 @@ export const validateAndPriceProducts = async (
         }
 
         const variants = (product.variants as any[]) || [];
-        const hasVariants = Boolean(product.hasVariants) || variants.length > 0;
+        const hasVariants = Boolean(product.hasVariants) && variants.length > 0;
 
-        // Resolve the effective unit price and stock availability.
+        // Resolve the effective unit price and stock availability.s
         let basePrice = product.price;
         let stock = product.stock;
         let variantSnapshot: { sku: string; attributes: Record<string, string> } | undefined;

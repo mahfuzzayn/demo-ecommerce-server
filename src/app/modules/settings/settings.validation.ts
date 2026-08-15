@@ -156,7 +156,6 @@ const navbarValidationSchema = z.object({
     links: z.array(navLinkValidationSchema).default([]),
     groups: z
         .object({
-            public: z.array(navLinkValidationSchema).default([]),
             auth: z.array(navLinkValidationSchema).default([]),
             customer: z.array(navLinkValidationSchema).default([]),
             admin: z.array(navLinkValidationSchema).default([]),

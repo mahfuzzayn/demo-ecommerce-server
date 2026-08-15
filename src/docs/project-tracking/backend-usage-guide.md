@@ -1909,10 +1909,9 @@ The Settings module is a **single singleton document** (`_id: "singleton"`) that
   "navbar": {
     "links": [{ "label": "Home", "url": "/", "order": 0, "children": [] }, { "label": "Products", "url": "/shop", "order": 1, "children": [] }, { "label": "About", "url": "/about", "order": 2, "children": [] }, { "label": "Contact", "url": "/contact", "order": 3, "children": [] }],
     "groups": {
-      "public": [{ "label": "Home", "url": "/", "order": 0, "children": [] }, { "label": "Products", "url": "/shop", "order": 1, "children": [] }, { "label": "About", "url": "/about", "order": 2, "children": [] }, { "label": "Contact", "url": "/contact", "order": 3, "children": [] }, { "label": "Login", "url": "/login", "order": 4, "children": [] }, { "label": "Register", "url": "/register", "order": 5, "children": [] }],
-      "auth": [],
-      "customer": [{ "label": "Dashboard", "url": "/dashboard/customer", "order": 0, "children": [] }, { "label": "My Orders", "url": "/dashboard/orders", "order": 1, "children": [] }, { "label": "Logout", "url": "/logout", "order": 2, "children": [] }],
-      "admin": [{ "label": "Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }, { "label": "Products", "url": "/dashboard/products", "order": 1, "children": [] }, { "label": "Orders", "url": "/dashboard/orders", "order": 2, "children": [] }, { "label": "Users", "url": "/dashboard/users", "order": 3, "children": [] }, { "label": "Settings", "url": "/dashboard/settings", "order": 4, "children": [] }, { "label": "Logout", "url": "/logout", "order": 5, "children": [] }]
+      "auth": [{ "label": "Login", "url": "/login", "order": 0, "children": [] }],
+      "customer": [{ "label": "Dashboard", "url": "/dashboard/customer", "order": 0, "children": [] }, { "label": "Logout", "url": "/logout", "order": 1, "children": [] }],
+      "admin": [{ "label": "Dashboard", "url": "/dashboard/admin", "order": 0, "children": [] }, { "label": "Logout", "url": "/logout", "order": 1, "children": [] }]
     }
   },
   "footer": { "description": "Quality products curated for your lifestyle...", "columns": [{ "title": "Quick Links", "links": [{ "label": "Home", "url": "/" }, { "label": "Products", "url": "/shop" }, { "label": "About", "url": "/about" }, { "label": "Contact", "url": "/contact" }] }, { "title": "Shop", "links": [{ "label": "All Products", "url": "/shop" }] }, { "title": "Contact", "links": [{ "label": "About Us", "url": "/about" }, { "label": "Contact Us", "url": "/contact" }] }], "socialLinks": [{ "platform": "twitter", "url": "https://twitter.com/attor" }, { "platform": "instagram", "url": "https://instagram.com/attor" }, { "platform": "facebook", "url": "https://facebook.com/attor" }], "copyrightText": "© 2026 Attor. All rights reserved.", "newsletter": { "enabled": true, "heading": "Subscribe for exclusive offers" } },
@@ -2041,7 +2040,7 @@ Authorization: Bearer <adminAccessToken>
 
 Protected — `admin`. Applies the **entire** niche preset in one write: **theme + brand + hero + about + contact + footer + navbar + testimonials + limitedOffer**. Use it to recover from accidental content loss (e.g. deleted nav links) or to fully re-theme the storefront.
 
-- The navbar is standardized: main `links` = Home / Products / About / Contact; `groups` = `public` (adds Login/Register), `customer` (Dashboard, My Orders, Logout) and `admin` (Dashboard, Products, Orders, Users, Settings, Logout).
+- The navbar is standardized: main `links` = Home / Products / About / Contact (public links — no redundant `public` group); `groups` = `auth` (Login), `customer` (Dashboard, Logout) and `admin` (Dashboard, Logout).
 - The footer is standardized: **Quick Links** + **Shop** + **Contact** columns, social links, newsletter.
 - **`brand.currency` and `brand.deliveryOptions` are PRESERVED** if already set; if unset they fall back to the preset defaults (`usd` + the standard delivery list).
 - Replaced section images (hero/testimonials/about/limitedOffer) are **destroyed from Cloudinary** (best-effort, after the DB write).

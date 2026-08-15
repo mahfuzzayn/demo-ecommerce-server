@@ -162,7 +162,6 @@ export interface INavLink {
 export interface INavbarSection {
     links: INavLink[];
     groups: {
-        public: INavLink[];
         auth: INavLink[];
         customer: INavLink[];
         admin: INavLink[];

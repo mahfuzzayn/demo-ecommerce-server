@@ -290,7 +290,7 @@ const emptyPresetDefaults = () => ({
     testimonials: { heading: "", items: [] },
     navbar: {
         links: [],
-        groups: { public: [], auth: [], customer: [], admin: [] },
+        groups: { auth: [], customer: [], admin: [] },
     },
     footer: {
         description: "",
