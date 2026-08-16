@@ -103,11 +103,21 @@ const createReview = async (
     payload.user = authUser.userId as any;
 
     // Verified purchase: only a Processing/Shipped/Completed order for this
-    // product counts — a Pending or Cancelled order does not.
-    payload.isVerifiedPurchase = await hasVerifiedPurchase(
+    // product counts — a Pending or Cancelled order does not. Only customers
+    // who actually purchased the product are allowed to review it.
+    const verifiedPurchase = await hasVerifiedPurchase(
         authUser.userId,
         payload.product.toString(),
     );
+
+    if (!verifiedPurchase) {
+        throw new AppError(
+            StatusCodes.FORBIDDEN,
+            "Only customers who purchased this product can review it!",
+        );
+    }
+
+    payload.isVerifiedPurchase = true;
 
     const review = await Review.create(payload);
 

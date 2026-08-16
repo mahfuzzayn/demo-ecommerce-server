@@ -1725,7 +1725,7 @@ Authorization: Bearer <adminAccessToken>
 
 Parent route: `/api/v1/review`
 
-Review model fields: `rating` (1–5), `description`, `user` (ObjectId → User, attached automatically), `product` (ObjectId → Product), `isFlagged`, `flaggedReason`, `isVerifiedPurchase`, timestamps. **One review per user per product** (unique index). `isVerifiedPurchase` is computed from the customer's orders — `true` only when they have a `Processing`/`Shipped`/`Completed` order containing that product.
+Review model fields: `rating` (1–5), `description`, `user` (ObjectId → User, attached automatically), `product` (ObjectId → Product), `isFlagged`, `flaggedReason`, `isVerifiedPurchase`, timestamps. **One review per user per product** (unique index). **A verified purchase is required to review** — the customer must have a `Processing`/`Shipped`/`Completed` order containing the product (a `Pending` or `Cancelled` order does not count); without one the review is rejected. `isVerifiedPurchase` is therefore always `true` on created reviews.
 
 ### 14.1 GET /api/v1/review — Get all reviews
 
@@ -1806,7 +1806,7 @@ Authorization: Bearer <customerAccessToken>
 Protected — `customer` only (admin/manager tokens get `401 You are not authorized!`). Validations:
 1. **Product exists + is active** — 404 "Product not found!" / 400 "Product is not available!".
 2. **No duplicate review** — one review per user per product → 409 "You have already reviewed this product!".
-3. **Verified purchase** — `isVerifiedPurchase` is computed server-side by looking up the customer's orders for this product. It is `true` only when they have a `Processing`/`Shipped`/`Completed` order containing the product (a `Pending` or `Cancelled` order does not count).
+3. **Verified purchase required** — the customer must have a `Processing`/`Shipped`/`Completed` order containing this product (a `Pending` or `Cancelled` order does not count). Without one → 403 "Only customers who purchased this product can review it!". `isVerifiedPurchase` is always `true` on created reviews.
 
 On creation, the product's `averageRating` and `ratingCount` are **recalculated automatically**.
 
@@ -1843,7 +1843,7 @@ Content-Type: application/json
 }
 ```
 
-**Errors:** 404 "Product not found!" / 400 "Product is not available!" / 409 "You have already reviewed this product!"
+**Errors:** 404 "Product not found!" / 400 "Product is not available!" / 409 "You have already reviewed this product!" / 403 "Only customers who purchased this product can review it!"
 
 ### 14.5 PATCH /api/v1/review/:reviewId/status — Toggle review flag (admin)
 

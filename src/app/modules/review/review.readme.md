@@ -1,14 +1,14 @@
 # Review Module
 
 ## Overview
-The Review module handles product reviews and ratings. Customers submit reviews with a rating (1-5) and description. Each user can only submit **one review per product**, and the review is checked against the user's **orders** to confirm they actually purchased the product. When a review is created, the product's average rating and rating count are automatically updated.
+The Review module handles product reviews and ratings. Customers submit reviews with a rating (1-5) and description. Each user can only submit **one review per product**, and only customers with a **verified purchase** of the product (a `Processing`/`Shipped`/`Completed` order containing it) can submit a review at all. When a review is created, the product's average rating and rating count are automatically updated.
 
 ## How It Works
 - **List reviews** – Public route, returns non-flagged reviews with user and product details
 - **Get single review** – Public route, returns a specific non-flagged review
 - **My reviews** – Customer-only. Returns the authenticated customer's own reviews (including flagged ones) with pagination
-- **Create review** – Customer-only. Validates: product exists + active, the user **has not already reviewed it**, and computes `isVerifiedPurchase` by looking up the user's orders
-- **Verified purchase** – `isVerifiedPurchase` is `true` only when the user has a `Processing`/`Shipped`/`Completed` order containing that product (a `Pending` or `Cancelled` order does not count)
+- **Create review** – Customer-only. Validates: product exists + active, the user **has not already reviewed it**, and the user has a **verified purchase** of the product
+- **Verified purchase** – Required to review: the user must have a `Processing`/`Shipped`/`Completed` order containing that product (a `Pending` or `Cancelled` order does not count). Without one, review creation is rejected (403) and `isVerifiedPurchase` is always `true` on created reviews
 - **Rating sync** – Creating a review triggers an aggregation to recalculate the product's `averageRating` and `ratingCount`
 
 ## Test Data
@@ -132,4 +132,4 @@ Content-Type: application/json
     }
 }
 ```
-Note: `isVerifiedPurchase` is computed server-side from the customer's orders — `true` only when they have a `Processing`/`Shipped`/`Completed` order containing this product. Errors: 404 "Product not found!" / 400 "Product is not available!" / 409 "You have already reviewed this product!".
+Note: A **verified purchase is required** — the customer must have a `Processing`/`Shipped`/`Completed` order containing this product (a `Pending` or `Cancelled` order does not count). `isVerifiedPurchase` is always `true` on created reviews. Errors: 404 "Product not found!" / 400 "Product is not available!" / 409 "You have already reviewed this product!" / 403 "Only customers who purchased this product can review it!".
